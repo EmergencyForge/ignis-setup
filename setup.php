@@ -21,6 +21,11 @@ $gitReturnVar = 0;
 exec('git --version 2>&1', $gitOutput, $gitReturnVar);
 $gitAvailable = ($gitReturnVar === 0);
 
+// Determine default values for BASE_PATH and DOMAIN
+$defaultDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '/');
+$defaultBasePath = ($scriptDir === '/' || $scriptDir === '\\') ? '/' : rtrim($scriptDir, '/\\') . '/';
+
 function logError($message)
 {
     $timestamp = date('Y-m-d H:i:s');
@@ -168,6 +173,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         'DB_NAME' => sanitizeEnvValue($_POST['db_name'] ?? 'intrarp'),
         'DISCORD_CLIENT_ID' => sanitizeEnvValue($_POST['discord_client_id'] ?? ''),
         'DISCORD_CLIENT_SECRET' => sanitizeEnvValue($_POST['discord_client_secret'] ?? ''),
+        'BASE_PATH' => sanitizeEnvValue($_POST['base_path'] ?? '/'),
+        'DOMAIN' => sanitizeEnvValue($_POST['domain'] ?? 'localhost'),
     ];
 
     if (empty($envConfig['DB_NAME'])) {
@@ -194,7 +201,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         $envContent .= "DB_PASS=" . formatEnvValue($envConfig['DB_PASS']) . "\n";
         $envContent .= "DB_NAME=" . formatEnvValue($envConfig['DB_NAME']) . "\n\n";
         $envContent .= "DISCORD_CLIENT_ID=" . formatEnvValue($envConfig['DISCORD_CLIENT_ID']) . "\n";
-        $envContent .= "DISCORD_CLIENT_SECRET=" . formatEnvValue($envConfig['DISCORD_CLIENT_SECRET']);
+        $envContent .= "DISCORD_CLIENT_SECRET=" . formatEnvValue($envConfig['DISCORD_CLIENT_SECRET']) . "\n\n";
+        $envContent .= "# System Configuration\n";
+        $envContent .= "BASE_PATH=" . formatEnvValue($envConfig['BASE_PATH']) . "\n";
+        $envContent .= "DOMAIN=" . formatEnvValue($envConfig['DOMAIN']);
 
         if (file_put_contents('.env', $envContent)) {
             $success[] = '.env Datei erfolgreich erstellt!';
@@ -933,6 +943,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                         <button type="button" class="toggle-password" onclick="togglePassword('discord_client_secret', this)">Anzeigen</button>
                     </div>
                     <small>Client Secret der Discord-Anwendung</small>
+                </div>
+
+                <div class="section-title">System-Konfiguration</div>
+
+                <div class="form-group">
+                    <label for="domain">Domain</label>
+                    <input type="text" id="domain" name="domain" value="<?php echo htmlspecialchars($defaultDomain); ?>" required>
+                    <small>Die Domain unter der das System erreichbar ist (ohne http/https)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="base_path">Base Path</label>
+                    <input type="text" id="base_path" name="base_path" value="<?php echo htmlspecialchars($defaultBasePath); ?>" required>
+                    <small>Der Pfad zur Installation (z.B. <code>/</code> für Root oder <code>/intrarp/</code> für Unterverzeichnis)</small>
                 </div>
 
                 <script>
