@@ -33,6 +33,64 @@ function logError($message)
     file_put_contents('setup_error.log', $logMessage, FILE_APPEND);
 }
 
+// Sanitize and escape environment variables to prevent injection attacks
+// Follows .env file format standards with proper quoting
+function sanitizeEnvValue($value) {
+    // Remove any newline characters that could break .env file format
+    $value = str_replace(["\r", "\n"], '', $value);
+    // Trim whitespace
+    $value = trim($value);
+    return $value;
+}
+
+// Format value for .env file with proper quoting and escaping
+function formatEnvValue($value) {
+    // Sanitize first
+    $value = sanitizeEnvValue($value);
+    // Escape backslashes and double quotes
+    $value = str_replace(['\\', '"'], ['\\\\', '\\"'], $value);
+    // Wrap in double quotes for safety
+    return '"' . $value . '"';
+}
+
+// AJAX: Datenbankverbindung testen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'test_db') {
+    header('Content-Type: application/json');
+    $host = sanitizeEnvValue($_POST['db_host'] ?? 'localhost');
+    $user = sanitizeEnvValue($_POST['db_user'] ?? 'root');
+    $pass = sanitizeEnvValue($_POST['db_pass'] ?? '');
+    $name = sanitizeEnvValue($_POST['db_name'] ?? '');
+
+    if (empty($name)) {
+        echo json_encode(['success' => false, 'message' => 'Datenbank-Name ist erforderlich.']);
+        exit;
+    }
+
+    try {
+        $dsn = 'mysql:host=' . $host . ';dbname=' . $name . ';charset=utf8mb4';
+        $pdo = new PDO($dsn, $user, $pass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 5,
+        ]);
+        $serverVersion = $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
+        echo json_encode(['success' => true, 'message' => 'Verbindung erfolgreich! (Server: MySQL ' . $serverVersion . ')']);
+    } catch (PDOException $e) {
+        $msg = $e->getMessage();
+        // Bekannte Fehlermeldungen übersetzen
+        if (str_contains($msg, 'Access denied')) {
+            $msg = 'Zugriff verweigert – Benutzername oder Passwort falsch.';
+        } elseif (str_contains($msg, 'Unknown database')) {
+            $msg = 'Die Datenbank "' . htmlspecialchars($name) . '" existiert nicht.';
+        } elseif (str_contains($msg, 'Connection refused') || str_contains($msg, 'No such file or directory')) {
+            $msg = 'Verbindung zum Host "' . htmlspecialchars($host) . '" fehlgeschlagen – Server nicht erreichbar.';
+        } elseif (str_contains($msg, 'getaddrinfo') || str_contains($msg, 'Name or service not known')) {
+            $msg = 'Der Host "' . htmlspecialchars($host) . '" konnte nicht aufgelöst werden.';
+        }
+        echo json_encode(['success' => false, 'message' => $msg]);
+    }
+    exit;
+}
+
 if (isset($_GET['force_delete']) && $_GET['force_delete'] === 'confirm') {
     $setupFile = __FILE__;
     if (@unlink($setupFile)) {
@@ -146,26 +204,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
     }
 
-    // Sanitize and escape environment variables to prevent injection attacks
-    // Follows .env file format standards with proper quoting
-    function sanitizeEnvValue($value) {
-        // Remove any newline characters that could break .env file format
-        $value = str_replace(["\r", "\n"], '', $value);
-        // Trim whitespace
-        $value = trim($value);
-        return $value;
-    }
-
-    // Format value for .env file with proper quoting and escaping
-    function formatEnvValue($value) {
-        // Sanitize first
-        $value = sanitizeEnvValue($value);
-        // Escape backslashes and double quotes
-        $value = str_replace(['\\', '"'], ['\\\\', '\\"'], $value);
-        // Wrap in double quotes for safety
-        return '"' . $value . '"';
-    }
-
     $envConfig = [
         'DB_HOST' => sanitizeEnvValue($_POST['db_host'] ?? 'localhost'),
         'DB_USER' => sanitizeEnvValue($_POST['db_user'] ?? 'root'),
@@ -243,25 +281,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup - Composer Warnung</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .warning { color: #ff9800; font-size: 1.5em; margin-bottom: 20px; text-align: center; }
+        :root { --color-primary: #d10000; --color-primary-hover: #a00000; --color-warning: #e65100; }
+        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: #2b2d42; padding: 20px; min-height: 100vh; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .warning { color: var(--color-warning); font-size: 1.5em; margin-bottom: 20px; text-align: center; font-weight: 600; }
         .message { margin: 20px 0; line-height: 1.6; }
-        .code-box { background: #f5f5f5; padding: 15px; border-radius: 6px; border-left: 4px solid #ff9800; margin: 20px 0; font-family: monospace; }
+        .message p + p { margin-top: 15px; }
+        .code-box { background: #f5f5f5; padding: 15px; border-radius: 6px; border-left: 4px solid var(--color-warning); margin: 20px 0; font-family: monospace; }
         .buttons { display: flex; gap: 10px; margin-top: 30px; }
         .btn { flex: 1; padding: 15px; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; font-weight: 600; transition: all 0.3s; }
-        .btn-primary { background: #d10000; color: white; }
-        .btn-primary:hover { background: #a00000; }
+        .btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+        .btn-primary { background: var(--color-primary); color: white; }
+        .btn-primary:hover { background: var(--color-primary-hover); }
         .btn-secondary { background: #666; color: white; }
         .btn-secondary:hover { background: #555; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="warning">⚠️ Composer-Warnung</div>
+    <main class="container" role="alert">
+        <div class="warning">Composer-Warnung</div>
         <div class="message">
             <p><strong>Die Composer-Abhängigkeiten konnten nicht automatisch installiert werden.</strong></p>
-            <p style="margin-top: 15px;">Das System benötigt Composer-Pakete, um ordnungsgemäß zu funktionieren. Bitte führen Sie folgenden Befehl manuell aus:</p>
+            <p>Das System benötigt Composer-Pakete, um ordnungsgemäß zu funktionieren. Bitte führen Sie folgenden Befehl manuell aus:</p>
             <div class="code-box">composer install --no-dev --optimize-autoloader</div>
             <p><strong>Wichtig:</strong> Das System wird erst nach der Installation der Composer-Abhängigkeiten vollständig funktionieren.</p>
         </div>
@@ -272,7 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             </form>
             <button onclick="window.location.reload();" class="btn btn-secondary">Zurück zum Setup</button>
         </div>
-    </div>
+    </main>
 </body>
 </html>';
                     exit;
@@ -287,20 +328,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup erfolgreich</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
-        .success { color: #28a745; font-size: 1.5em; margin-bottom: 20px; }
-        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #d10000; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        :root { --color-primary: #d10000; --color-success: #2e7d32; }
+        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: #2b2d42; padding: 20px; min-height: 100vh; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+        .success { color: var(--color-success); font-size: 1.5em; margin-bottom: 20px; font-weight: 600; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--color-primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="success">✓ Setup erfolgreich abgeschlossen!</div>
-        <div class="spinner"></div>
+    <main class="container" role="status" aria-live="polite">
+        <div class="success">Setup erfolgreich abgeschlossen!</div>
+        <div class="spinner" aria-hidden="true"></div>
         <p>Sie werden in Kürze zum Admin-Panel weitergeleitet...</p>
         <p><small>setup.php wird automatisch gelöscht.</small></p>
-    </div>
+    </main>
 </body>
 </html>';
 
@@ -323,6 +365,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>intraRP Setup</title>
     <style>
+        :root {
+            --color-primary: #d10000;
+            --color-primary-hover: #a00000;
+            --color-bg: #2b2d42;
+            --color-surface: #ffffff;
+            --color-text: #333333;
+            --color-text-muted: #555555;
+            --color-border: #e0e0e0;
+            --color-border-hover: #d0d0d0;
+            --color-input-bg: #f5f5f5;
+            --color-info: #1565c0;
+            --color-info-bg: #e3f2fd;
+            --color-success: #2e7d32;
+            --color-success-bg: #e8f5e9;
+            --color-success-border: #4caf50;
+            --color-error: #c62828;
+            --color-error-bg: #ffebee;
+            --color-error-border: #f44336;
+            --color-warning: #e65100;
+            --color-warning-bg: #fff3e0;
+            --color-secondary-btn: #666666;
+            --color-secondary-btn-hover: #555555;
+            --color-test-btn: #1976d2;
+            --color-test-btn-hover: #1565c0;
+            --radius-sm: 4px;
+            --radius-md: 6px;
+            --radius-lg: 16px;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -331,7 +402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            background: var(--color-bg);
             min-height: 100vh;
             padding: 20px;
         }
@@ -339,25 +410,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .container {
             max-width: 800px;
             margin: 0 auto;
-            background: white;
-            border-radius: 16px;
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             overflow: hidden;
         }
 
-        .header {
-            background: #d10000;
+        .setup-header {
+            background: var(--color-primary);
             color: white;
             padding: 30px;
             text-align: center;
         }
 
-        .header h1 {
+        .setup-header h1 {
             font-size: 2.5em;
             margin-bottom: 10px;
         }
 
-        .header p {
+        .setup-header p {
             opacity: 0.9;
         }
 
@@ -373,7 +444,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             display: block;
             font-weight: 600;
             margin-bottom: 8px;
-            color: #333;
+            color: var(--color-text);
         }
 
         .form-group input[type="text"],
@@ -381,26 +452,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .form-group select {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-md);
             font-size: 1em;
             transition: border-color 0.3s;
         }
 
         .form-group input:focus,
         .form-group select:focus {
-            outline: none;
-            border-color: #d10000;
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+            border-color: var(--color-primary);
         }
 
         .form-group select {
-            background-color: white;
+            background-color: var(--color-surface);
             cursor: pointer;
         }
 
         .form-group small {
             display: block;
-            color: #666;
+            color: var(--color-text-muted);
             margin-top: 5px;
             font-size: 0.9em;
         }
@@ -410,11 +482,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .form-group code {
-            background: #f5f5f5;
+            background: var(--color-input-bg);
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             font-family: 'Courier New', monospace;
-            color: #d10000;
+            color: var(--color-primary);
         }
 
         .color-picker-wrapper {
@@ -426,10 +498,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .color-picker-wrapper input[type="color"] {
             width: 60px;
             height: 45px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-md);
             cursor: pointer;
-            background: white;
+            background: var(--color-surface);
         }
 
         .color-picker-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
@@ -438,7 +510,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
 
         .color-picker-wrapper input[type="color"]::-webkit-color-swatch {
             border: none;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
         }
 
         .color-picker-wrapper input[type="text"] {
@@ -452,8 +524,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .checkbox-group input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             margin-right: 10px;
             cursor: pointer;
         }
@@ -466,10 +538,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
 
         .section-title {
             font-size: 1.3em;
-            color: #d10000;
+            color: var(--color-primary);
             margin: 30px 0 20px 0;
             padding-bottom: 10px;
-            border-bottom: 2px solid #e0e0e0;
+            border-bottom: 2px solid var(--color-border);
         }
 
         .section-title:first-child {
@@ -477,11 +549,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .btn {
-            background: #d10000;
+            background: var(--color-primary);
             color: white;
             padding: 15px 40px;
             border: none;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             font-size: 1.1em;
             cursor: pointer;
             width: 100%;
@@ -490,34 +562,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .btn:hover {
-            background: #a00000;
+            background: var(--color-primary-hover);
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .btn-secondary {
-            background: #666;
+            background: var(--color-secondary-btn);
             margin-top: 15px;
         }
 
         .btn-secondary:hover {
-            background: #555;
+            background: var(--color-secondary-btn-hover);
+        }
+
+        .btn-test-db {
+            background: var(--color-test-btn);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 0.95em;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+            margin-top: 5px;
+        }
+
+        .btn-test-db:hover {
+            background: var(--color-test-btn-hover);
+        }
+
+        .btn-test-db:focus-visible {
+            outline: 2px solid var(--color-test-btn);
+            outline-offset: 2px;
+        }
+
+        .btn-test-db:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .db-test-result {
+            padding: 10px 15px;
+            border-radius: var(--radius-md);
+            margin-top: 10px;
+            display: none;
+            font-size: 0.95em;
+        }
+
+        .db-test-result.success {
+            background: var(--color-success-bg);
+            border-left: 4px solid var(--color-success-border);
+            color: var(--color-success);
+        }
+
+        .db-test-result.error {
+            background: var(--color-error-bg);
+            border-left: 4px solid var(--color-error-border);
+            color: var(--color-error);
+        }
+
+        .db-test-result.loading {
+            background: var(--color-info-bg);
+            border-left: 4px solid var(--color-test-btn);
+            color: var(--color-info);
         }
 
         .alert {
             padding: 15px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-bottom: 20px;
         }
 
         .alert-error {
-            background: #fee;
-            border-left: 4px solid #d00;
-            color: #c00;
+            background: var(--color-error-bg);
+            border-left: 4px solid var(--color-error-border);
+            color: var(--color-error);
         }
 
         .alert-success {
-            background: #efe;
-            border-left: 4px solid #0d0;
-            color: #0a0;
+            background: var(--color-success-bg);
+            border-left: 4px solid var(--color-success-border);
+            color: var(--color-success);
         }
 
         .alert ul {
@@ -526,12 +661,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .info-box {
-            background: #e3f2fd;
-            border-left: 4px solid #2196f3;
+            background: var(--color-info-bg);
+            border-left: 4px solid var(--color-test-btn);
             padding: 15px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-bottom: 20px;
-            color: #1976d2;
+            color: var(--color-info);
         }
 
         .info-box strong {
@@ -547,28 +682,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             display: flex;
             align-items: center;
             padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-md);
             margin-bottom: 10px;
             cursor: pointer;
             transition: all 0.3s;
         }
 
         .radio-group label:hover {
-            border-color: #d10000;
+            border-color: var(--color-primary);
             background: #fff5f5;
         }
 
         .radio-group input[type="radio"] {
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             margin-right: 12px;
             cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .radio-group input[type="radio"]:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
         }
 
         .radio-group input[type="radio"]:checked+span {
             font-weight: 600;
-            color: #d10000;
+            color: var(--color-primary);
         }
 
         .radio-group label span {
@@ -577,20 +718,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
 
         .radio-group label small {
             display: block;
-            color: #666;
+            color: var(--color-text-muted);
             font-size: 0.85em;
             margin-top: 4px;
         }
 
         .warning-badge {
             display: inline-block;
-            background: #ff9800;
+            background: var(--color-warning);
             color: white;
             padding: 2px 8px;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             font-size: 0.75em;
             font-weight: 600;
             margin-left: 8px;
+        }
+
+        .warning-badge--success {
+            background: var(--color-success-border);
+        }
+
+        .warning-badge--dev {
+            background: #7b1fa2;
         }
 
         .custom-branch-input {
@@ -605,14 +754,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .custom-branch-input input {
             width: 100%;
             padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-md);
             font-size: 0.95em;
         }
 
         .requirement-box {
             padding: 15px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-bottom: 15px;
             display: flex;
             align-items: center;
@@ -620,19 +769,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .requirement-box.success {
-            background: #e8f5e9;
-            border-left: 4px solid #4caf50;
-            color: #2e7d32;
+            background: var(--color-success-bg);
+            border-left: 4px solid var(--color-success-border);
+            color: var(--color-success);
         }
 
         .requirement-box.error {
-            background: #ffebee;
-            border-left: 4px solid #f44336;
-            color: #c62828;
+            background: var(--color-error-bg);
+            border-left: 4px solid var(--color-error-border);
+            color: var(--color-error);
         }
 
         .requirement-box strong {
             font-size: 1.1em;
+        }
+
+        .requirement-icon {
+            font-size: 2em;
+        }
+
+        .requirement-detail {
+            flex: 1;
+        }
+
+        .requirement-title {
+            font-size: 1.2em;
+        }
+
+        .requirement-status {
+            font-size: 1em;
+            margin-top: 5px;
+        }
+
+        .requirement-sub {
+            font-size: 0.85em;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        .requirement-fix {
+            margin-top: 3px;
+        }
+
+        .requirement-fix-inner {
+            margin-top: 5px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: var(--radius-sm);
+            font-size: 0.9em;
         }
 
         .requirements-grid {
@@ -642,9 +826,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             margin-bottom: 20px;
         }
 
+        .alert-error-log {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #fcc;
+        }
+
+        .info-box a {
+            color: var(--color-info);
+            font-weight: 600;
+        }
+
         @media (max-width: 768px) {
             .requirements-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .setup-header {
+                padding: 20px;
+            }
+
+            .setup-header h1 {
+                font-size: 1.8em;
+            }
+
+            .btn {
+                padding: 14px 20px;
+                font-size: 1em;
+            }
+
+            .password-wrapper {
+                flex-direction: column;
+            }
+
+            .password-wrapper .toggle-password {
+                align-self: flex-start;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            .content {
+                padding: 16px;
+            }
+
+            .container {
+                border-radius: var(--radius-md);
+            }
+
+            .radio-group label {
+                padding: 10px;
             }
         }
 
@@ -658,51 +896,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .password-wrapper input {
             flex: 1;
             padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-md);
             font-size: 1em;
             transition: border-color 0.3s;
         }
 
         .password-wrapper input:focus {
-            outline: none;
-            border-color: #d10000;
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+            border-color: var(--color-primary);
         }
 
         .toggle-password {
-            background: #f5f5f5;
-            border: 2px solid #e0e0e0;
+            background: var(--color-input-bg);
+            border: 2px solid var(--color-border);
             padding: 12px 20px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             cursor: pointer;
             font-size: 0.9em;
             transition: all 0.3s;
             white-space: nowrap;
             font-weight: 500;
+            min-height: 44px;
         }
 
         .toggle-password:hover {
             background: #e8e8e8;
-            border-color: #d0d0d0;
+            border-color: var(--color-border-hover);
+        }
+
+        .toggle-password:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
         }
 
         .toggle-password.visible {
-            background: #d10000;
+            background: var(--color-primary);
             color: white;
-            border-color: #d10000;
+            border-color: var(--color-primary);
         }
 
         .toggle-password.visible:hover {
-            background: #a00000;
-            border-color: #a00000;
+            background: var(--color-primary-hover);
+            border-color: var(--color-primary-hover);
         }
 
         .pin-input-wrapper {
             margin-top: 15px;
             padding: 15px;
             background: #f8f9fa;
-            border-radius: 6px;
-            border: 2px solid #e0e0e0;
+            border-radius: var(--radius-md);
+            border: 2px solid var(--color-border);
             display: none;
         }
 
@@ -713,8 +958,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .pin-input-wrapper input {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-md);
             font-size: 1.2em;
             text-align: center;
             letter-spacing: 0.3em;
@@ -722,48 +967,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .pin-input-wrapper input:focus {
-            outline: none;
-            border-color: #d10000;
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+            border-color: var(--color-primary);
         }
 
         .pin-input-wrapper small {
             display: block;
             margin-top: 8px;
-            color: #666;
+            color: var(--color-text-muted);
             text-align: center;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <div class="header">
+    <main class="container">
+        <header class="setup-header">
             <h1>intraRP Setup</h1>
             <p>Konfigurieren Sie Ihr Intranet-System</p>
-        </div>
+        </header>
 
         <div class="content">
             <?php if (!$canProceed): ?>
-                <div class="alert alert-error" style="font-size: 1.1em;">
-                    <strong>⚠️ SETUP BLOCKIERT</strong>
-                    <p style="margin-top: 10px; margin-bottom: 0;">Das Setup kann nicht fortgesetzt werden, da wichtige System-Anforderungen nicht erfüllt sind. Bitte beheben Sie die unten aufgeführten Probleme.</p>
+                <div class="alert alert-error" role="alert">
+                    <strong>SETUP BLOCKIERT</strong>
+                    <p>Das Setup kann nicht fortgesetzt werden, da wichtige System-Anforderungen nicht erfüllt sind. Bitte beheben Sie die unten aufgeführten Probleme.</p>
                 </div>
             <?php endif; ?>
 
-            <div class="section-title" style="margin-top: <?php echo !$canProceed ? '20px' : '0'; ?>;">System-Anforderungen</div>
+            <h2 class="section-title">System-Anforderungen</h2>
 
             <div class="requirements-grid">
                 <div class="requirement-box <?php echo $phpVersionOk ? 'success' : 'error'; ?>">
-                    <span style="font-size: 2em;"><?php echo $phpVersionOk ? '✓' : '✗'; ?></span>
-                    <div style="flex: 1;">
-                        <strong style="font-size: 1.2em;">PHP Version</strong>
-                        <div style="font-size: 1em; margin-top: 5px;">
+                    <span class="requirement-icon" aria-hidden="true"><?php echo $phpVersionOk ? '✓' : '✗'; ?></span>
+                    <div class="requirement-detail">
+                        <strong class="requirement-title">PHP Version</strong>
+                        <div class="requirement-status">
                             <?php if ($phpVersionOk): ?>
                                 Installiert: <strong><?php echo $phpVersion; ?></strong>
-                                <div style="font-size: 0.85em; opacity: 0.8; margin-top: 2px;">Erforderlich: >= <?php echo $requiredPhpVersion; ?></div>
+                                <div class="requirement-sub">Erforderlich: >= <?php echo $requiredPhpVersion; ?></div>
                             <?php else: ?>
-                                <div style="margin-top: 3px;">Installiert: <strong><?php echo $phpVersion; ?></strong></div>
-                                <div style="margin-top: 5px; padding: 8px; background: rgba(255,255,255,0.3); border-radius: 4px; font-size: 0.9em;">
+                                <div class="requirement-fix">Installiert: <strong><?php echo $phpVersion; ?></strong></div>
+                                <div class="requirement-fix-inner">
                                     <strong>Erforderlich: >= <?php echo $requiredPhpVersion; ?></strong><br>
                                     <small>Bitte aktualisieren Sie PHP über Ihr Hosting-Panel</small>
                                 </div>
@@ -773,15 +1019,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                 </div>
 
                 <div class="requirement-box <?php echo $gitAvailable ? 'success' : 'error'; ?>">
-                    <span style="font-size: 2em;"><?php echo $gitAvailable ? '✓' : '✗'; ?></span>
-                    <div style="flex: 1;">
-                        <strong style="font-size: 1.2em;">Git</strong>
-                        <div style="font-size: 1em; margin-top: 5px;">
+                    <span class="requirement-icon" aria-hidden="true"><?php echo $gitAvailable ? '✓' : '✗'; ?></span>
+                    <div class="requirement-detail">
+                        <strong class="requirement-title">Git</strong>
+                        <div class="requirement-status">
                             <?php if ($gitAvailable): ?>
                                 <strong>Verfügbar</strong>
-                                <div style="font-size: 0.85em; opacity: 0.8; margin-top: 2px;">Git ist installiert und funktionsfähig</div>
+                                <div class="requirement-sub">Git ist installiert und funktionsfähig</div>
                             <?php else: ?>
-                                <div style="margin-top: 5px; padding: 8px; background: rgba(255,255,255,0.3); border-radius: 4px; font-size: 0.9em;">
+                                <div class="requirement-fix-inner">
                                     <strong>Nicht verfügbar!</strong><br>
                                     <small>Git muss auf dem Server installiert sein</small>
                                 </div>
@@ -792,21 +1038,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             </div>
 
             <?php if (!empty($errors)): ?>
-                <div class="alert alert-error">
+                <div class="alert alert-error" role="alert">
                     <strong>Fehler:</strong>
                     <ul>
                         <?php foreach ($errors as $error): ?>
                             <li><?php echo htmlspecialchars($error); ?></li>
                         <?php endforeach; ?>
                     </ul>
-                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #fcc;">
-                        <small>📝 Fehler wurden in <code>setup_error.log</code> protokolliert</small>
+                    <div class="alert-error-log">
+                        <small>Fehler wurden in <code>setup_error.log</code> protokolliert</small>
                     </div>
                 </div>
 
                 <?php if (!empty($success)): ?>
-                    <div class="info-box" style="margin-bottom: 20px;">
-                        <strong>ℹ️ Teilweise erfolgreich</strong>
+                    <div class="info-box">
+                        <strong>Teilweise erfolgreich</strong>
                         Einige Schritte wurden erfolgreich abgeschlossen. Bitte beheben Sie die oben genannten Fehler oder fahren Sie manuell fort.
                     </div>
                     <?php if ($canProceed): ?>
@@ -826,8 +1072,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                 </div>
             <?php endif; ?>
 
-            <form method="POST" action="">
-                <div class="section-title">Git Repository</div>
+            <form method="POST" action="" id="setup-form">
+                <h2 class="section-title">Git Repository</h2>
 
                 <div class="form-group">
                     <label>Version auswählen</label>
@@ -837,7 +1083,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                             <span>
                                 <div>
                                     <strong>Letzter Release</strong>
-                                    <span class="warning-badge" style="background: #4caf50;">EMPFOHLEN</span>
+                                    <span class="warning-badge warning-badge--success">EMPFOHLEN</span>
                                 </div>
                                 <small>Stabile Version - empfohlen für Produktivumgebungen</small>
                             </span>
@@ -858,7 +1104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                                 <span>
                                     <div>
                                         <strong>Custom Branch</strong>
-                                        <span class="warning-badge" style="background: #9c27b0;">DEV</span>
+                                        <span class="warning-badge warning-badge--dev">DEV</span>
                                     </div>
                                     <small>Eigenen Branch angeben · für Entwicklung</small>
                                 </span>
@@ -873,79 +1119,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                     <small>Repository: <code>github.com/EmergencyForge/intraRP</code></small>
                 </div>
 
-                <script>
-                    <?php if ($devMode): ?>
-                        const customRadio = document.getElementById('custom_branch_radio');
-                        const customInput = document.getElementById('custom_branch_input');
-                        const customField = document.getElementById('custom_branch_field');
-                        const allRadios = document.querySelectorAll('input[name="git_branch"]');
-
-                        allRadios.forEach(radio => {
-                            radio.addEventListener('change', function() {
-                                if (this.value === 'custom') {
-                                    customInput.classList.add('active');
-                                    customField.focus();
-                                } else {
-                                    customInput.classList.remove('active');
-                                }
-                            });
-                        });
-                    <?php endif; ?>
-                </script>
-
-                <div class="section-title">Datenbank-Konfiguration</div>
+                <h2 class="section-title">Datenbank-Konfiguration</h2>
 
                 <div class="form-group">
                     <label for="db_host">Datenbank-Host</label>
-                    <input type="text" id="db_host" name="db_host" value="localhost" required>
+                    <input type="text" id="db_host" name="db_host" value="localhost" required autocomplete="off">
                     <small>Host der Datenbank (meistens <code>localhost</code>)</small>
                 </div>
 
                 <div class="form-group">
                     <label for="db_user">Datenbank-Benutzer</label>
-                    <input type="text" id="db_user" name="db_user" value="root" required>
+                    <input type="text" id="db_user" name="db_user" value="root" required autocomplete="off">
                     <small>Benutzername für die Datenbank</small>
                 </div>
 
                 <div class="form-group">
                     <label for="db_pass">Datenbank-Passwort</label>
                     <div class="password-wrapper">
-                        <input type="password" id="db_pass" name="db_pass">
-                        <button type="button" class="toggle-password" onclick="togglePassword('db_pass', this)">Anzeigen</button>
+                        <input type="password" id="db_pass" name="db_pass" autocomplete="off">
+                        <button type="button" class="toggle-password" aria-pressed="false" aria-label="Passwort anzeigen" onclick="togglePassword('db_pass', this)">Anzeigen</button>
                     </div>
                     <small>Passwort für die Datenbank (optional)</small>
                 </div>
 
                 <div class="form-group">
                     <label for="db_name">Datenbank-Name *</label>
-                    <input type="text" id="db_name" name="db_name" value="intrarp" required>
+                    <input type="text" id="db_name" name="db_name" value="intrarp" required autocomplete="off">
                     <small>Name der zu verwendenden Datenbank</small>
                 </div>
 
-                <div class="section-title">Discord-Integration</div>
+                <div class="form-group">
+                    <button type="button" class="btn-test-db" id="btn-test-db" onclick="testDatabaseConnection()">🔌 Verbindung testen</button>
+                    <div class="db-test-result" id="db-test-result"></div>
+                </div>
+
+                <h2 class="section-title">Discord-Integration</h2>
 
                 <div class="info-box">
-                    <strong>ℹ️ Discord Applikation benötigt</strong>
+                    <strong>Discord Applikation benötigt</strong>
                     Für die Discord-Integration muss eine Discord-Applikation erstellt werden. Eine detaillierte Anleitung finden Sie hier:
-                    <a href="https://emergencyforge.de/wiki.html#discord-app-erstellen" target="_blank" style="color: #1976d2; font-weight: 600;">Discord-Applikation erstellen →</a>
+                    <a href="https://emergencyforge.de/wiki.html#discord-app-erstellen" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
                 </div>
 
                 <div class="form-group">
                     <label for="discord_client_id">Discord Client ID *</label>
-                    <input type="text" id="discord_client_id" name="discord_client_id" required>
+                    <input type="text" id="discord_client_id" name="discord_client_id" required autocomplete="off">
                     <small>Client ID der Discord-Anwendung</small>
                 </div>
 
                 <div class="form-group">
                     <label for="discord_client_secret">Discord Client Secret *</label>
                     <div class="password-wrapper">
-                        <input type="password" id="discord_client_secret" name="discord_client_secret" required>
-                        <button type="button" class="toggle-password" onclick="togglePassword('discord_client_secret', this)">Anzeigen</button>
+                        <input type="password" id="discord_client_secret" name="discord_client_secret" required autocomplete="off">
+                        <button type="button" class="toggle-password" aria-pressed="false" aria-label="Passwort anzeigen" onclick="togglePassword('discord_client_secret', this)">Anzeigen</button>
                     </div>
                     <small>Client Secret der Discord-Anwendung</small>
                 </div>
 
-                <div class="section-title">System-Konfiguration</div>
+                <h2 class="section-title">System-Konfiguration</h2>
 
                 <div class="form-group">
                     <label for="domain">Domain</label>
@@ -959,30 +1190,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                     <small>Der Pfad zur Installation (z.B. <code>/</code> für Root oder <code>/intrarp/</code> für Unterverzeichnis)</small>
                 </div>
 
-                <script>
-                    function togglePassword(fieldId, button) {
-                        const field = document.getElementById(fieldId);
-                        if (field.type === 'password') {
-                            field.type = 'text';
-                            button.textContent = 'Verbergen';
-                            button.classList.add('visible');
-                        } else {
-                            field.type = 'password';
-                            button.textContent = 'Anzeigen';
-                            button.classList.remove('visible');
-                        }
-                    }
-                </script>
-
                 <div class="info-box">
                     <strong>ℹ️ Hinweis:</strong>
                     Die hier eingegebenen Datenbank- und Discord-Credentials werden in der <code>/.env</code> Datei gespeichert und können später dort angepasst werden. Alle weiteren System-Einstellungen (z.B. System-Name, Farben, Server-Informationen) werden nach dem Setup über das Admin-Panel in der Datenbank konfiguriert.
                 </div>
 
-                <button type="submit" class="btn" <?php echo !$canProceed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''; ?>>Setup durchführen</button>
+                <button type="submit" class="btn" id="submit-btn" <?php echo !$canProceed ? 'disabled' : ''; ?>>Setup durchführen</button>
             </form>
         </div>
-    </div>
+    </main>
+
+    <script>
+        function togglePassword(fieldId, button) {
+            const field = document.getElementById(fieldId);
+            const isHidden = field.type === 'password';
+            field.type = isHidden ? 'text' : 'password';
+            button.textContent = isHidden ? 'Verbergen' : 'Anzeigen';
+            button.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+            button.setAttribute('aria-label', isHidden ? 'Passwort verbergen' : 'Passwort anzeigen');
+            button.classList.toggle('visible', isHidden);
+        }
+
+        function testDatabaseConnection() {
+            const btn = document.getElementById('btn-test-db');
+            const result = document.getElementById('db-test-result');
+            const host = document.getElementById('db_host').value;
+            const user = document.getElementById('db_user').value;
+            const pass = document.getElementById('db_pass').value;
+            const name = document.getElementById('db_name').value;
+
+            if (!name) {
+                result.className = 'db-test-result error';
+                result.textContent = 'Bitte einen Datenbank-Namen eingeben.';
+                result.style.display = 'block';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Teste...';
+            result.className = 'db-test-result loading';
+            result.textContent = 'Verbindung wird getestet...';
+            result.style.display = 'block';
+
+            const formData = new FormData();
+            formData.append('action', 'test_db');
+            formData.append('db_host', host);
+            formData.append('db_user', user);
+            formData.append('db_pass', pass);
+            formData.append('db_name', name);
+
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                result.className = 'db-test-result ' + (data.success ? 'success' : 'error');
+                result.textContent = (data.success ? '✓ ' : '✗ ') + data.message;
+            })
+            .catch(() => {
+                result.className = 'db-test-result error';
+                result.textContent = '✗ Fehler beim Testen der Verbindung.';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = 'Verbindung testen';
+            });
+        }
+
+        <?php if ($devMode): ?>
+        (function() {
+            const customInput = document.getElementById('custom_branch_input');
+            const customField = document.getElementById('custom_branch_field');
+            const allRadios = document.querySelectorAll('input[name="git_branch"]');
+
+            allRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.value === 'custom') {
+                        customInput.classList.add('active');
+                        customField.focus();
+                    } else {
+                        customInput.classList.remove('active');
+                    }
+                });
+            });
+        })();
+        <?php endif; ?>
+
+        // Prevent double-submit
+        document.getElementById('setup-form')?.addEventListener('submit', function() {
+            const btn = document.getElementById('submit-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Setup wird durchgeführt...';
+            }
+        });
+    </script>
 </body>
 
 </html>
