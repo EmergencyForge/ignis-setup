@@ -35,7 +35,8 @@ function logError($message)
 
 // Sanitize and escape environment variables to prevent injection attacks
 // Follows .env file format standards with proper quoting
-function sanitizeEnvValue($value) {
+function sanitizeEnvValue($value)
+{
     // Remove any newline characters that could break .env file format
     $value = str_replace(["\r", "\n"], '', $value);
     // Trim whitespace
@@ -44,7 +45,8 @@ function sanitizeEnvValue($value) {
 }
 
 // Format value for .env file with proper quoting and escaping
-function formatEnvValue($value) {
+function formatEnvValue($value)
+{
     // Sanitize first
     $value = sanitizeEnvValue($value);
     // Escape backslashes and double quotes
@@ -366,32 +368,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
     <title>intraRP Setup</title>
     <style>
         :root {
-            --color-primary: #d10000;
-            --color-primary-hover: #a00000;
-            --color-bg: #2b2d42;
+            --color-primary: #c80000;
+            --color-primary-hover: #9e0000;
+            --color-primary-subtle: rgba(200, 0, 0, 0.06);
+            --color-bg: #1a1a2e;
             --color-surface: #ffffff;
-            --color-text: #333333;
-            --color-text-muted: #555555;
-            --color-border: #e0e0e0;
-            --color-border-hover: #d0d0d0;
-            --color-input-bg: #f5f5f5;
-            --color-info: #1565c0;
-            --color-info-bg: #e3f2fd;
-            --color-success: #2e7d32;
-            --color-success-bg: #e8f5e9;
-            --color-success-border: #4caf50;
-            --color-error: #c62828;
-            --color-error-bg: #ffebee;
-            --color-error-border: #f44336;
-            --color-warning: #e65100;
-            --color-warning-bg: #fff3e0;
-            --color-secondary-btn: #666666;
-            --color-secondary-btn-hover: #555555;
-            --color-test-btn: #1976d2;
-            --color-test-btn-hover: #1565c0;
+            --color-surface-raised: #fafafa;
+            --color-text: #1a1a2e;
+            --color-text-muted: #64647a;
+            --color-border: #e2e2ea;
+            --color-border-hover: #c8c8d4;
+            --color-input-bg: #f4f4f8;
+            --color-info: #1557b0;
+            --color-info-bg: #edf4ff;
+            --color-success: #1a7a2e;
+            --color-success-bg: #e6f7ea;
+            --color-success-border: #34a853;
+            --color-error: #b91c1c;
+            --color-error-bg: #fef2f2;
+            --color-error-border: #ef4444;
+            --color-warning: #c2410c;
+            --color-warning-bg: #fff7ed;
+            --color-secondary-btn: #64647a;
+            --color-secondary-btn-hover: #4a4a5e;
+            --color-test-btn: #2563eb;
+            --color-test-btn-hover: #1d4ed8;
+            --color-dev: #7b1fa2;
             --radius-sm: 4px;
-            --radius-md: 6px;
-            --radius-lg: 16px;
+            --radius-md: 8px;
+            --radius-lg: 20px;
+
+            /* Spacing scale */
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 16px;
+            --space-lg: 24px;
+            --space-xl: 36px;
+            --space-2xl: 48px;
+
+            /* Shadows */
+            --shadow-sm: 0 1px 3px rgba(26, 26, 46, 0.08);
+            --shadow-md: 0 4px 16px rgba(26, 26, 46, 0.1);
+            --shadow-lg: 0 12px 48px rgba(26, 26, 46, 0.18);
+            --shadow-xl: 0 24px 64px rgba(26, 26, 46, 0.25);
+        }
+
+        /* ═══ Dark mode ═══ */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --color-primary: #ef4444;
+                --color-primary-hover: #dc2626;
+                --color-primary-subtle: rgba(239, 68, 68, 0.1);
+                --color-bg: #0a0a0f;
+                --color-surface: #16161e;
+                --color-surface-raised: #1e1e2a;
+                --color-text: #e4e4ed;
+                --color-text-muted: #8b8ba0;
+                --color-border: #2a2a3a;
+                --color-border-hover: #3a3a4e;
+                --color-input-bg: #1e1e2a;
+                --color-info: #60a5fa;
+                --color-info-bg: rgba(96, 165, 250, 0.1);
+                --color-success: #4ade80;
+                --color-success-bg: rgba(74, 222, 128, 0.1);
+                --color-success-border: #22c55e;
+                --color-error: #f87171;
+                --color-error-bg: rgba(248, 113, 113, 0.1);
+                --color-error-border: #ef4444;
+                --color-warning: #fb923c;
+                --color-warning-bg: rgba(251, 146, 60, 0.1);
+                --color-secondary-btn: #8b8ba0;
+                --color-secondary-btn-hover: #a5a5b8;
+                --color-test-btn: #3b82f6;
+                --color-test-btn-hover: #2563eb;
+                --color-dev: #a855f7;
+                --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+                --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+                --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.45);
+                --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.55);
+            }
         }
 
         * {
@@ -401,97 +456,138 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
             background: var(--color-bg);
+            color: var(--color-text);
             min-height: 100vh;
-            padding: 20px;
+            padding: var(--space-xl);
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
         }
 
         .container {
-            max-width: 800px;
-            margin: 0 auto;
+            max-width: 720px;
+            width: 100%;
             background: var(--color-surface);
             border-radius: var(--radius-lg);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: var(--shadow-xl);
             overflow: hidden;
         }
 
         .setup-header {
             background: var(--color-primary);
             color: white;
-            padding: 30px;
-            text-align: center;
+            padding: 56px var(--space-2xl) var(--space-2xl);
+            text-align: left;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .setup-header::before {
+            content: '';
+            position: absolute;
+            top: -40%;
+            right: -10%;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .setup-header::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            right: 15%;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.04);
         }
 
         .setup-header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
+            font-size: 2.2em;
+            margin-bottom: var(--space-sm);
+            letter-spacing: -0.03em;
+            font-weight: 800;
+            position: relative;
         }
 
         .setup-header p {
-            opacity: 0.9;
+            opacity: 0.8;
+            font-size: 0.95em;
+            font-weight: 500;
+            position: relative;
         }
 
         .content {
-            padding: 40px;
+            padding: clamp(var(--space-lg), 5vw, var(--space-2xl));
         }
 
         .form-group {
-            margin-bottom: 25px;
+            margin-bottom: var(--space-lg);
         }
 
         .form-group label {
             display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
+            font-weight: 700;
+            margin-bottom: var(--space-sm);
             color: var(--color-text);
+            font-size: 0.88em;
+            letter-spacing: 0.01em;
         }
 
         .form-group input[type="text"],
         .form-group input[type="url"],
         .form-group select {
             width: 100%;
-            padding: 12px;
-            border: 2px solid var(--color-border);
+            padding: 14px var(--space-md);
+            border: 1.5px solid var(--color-border);
             border-radius: var(--radius-md);
-            font-size: 1em;
-            transition: border-color 0.3s;
+            font-size: 0.95em;
+            background: var(--color-surface);
+            color: var(--color-text);
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
 
         .form-group input:focus,
         .form-group select:focus {
-            outline: 2px solid var(--color-primary);
-            outline-offset: 2px;
+            outline: 2px solid transparent;
             border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-subtle);
         }
 
         .form-group select {
             background-color: var(--color-surface);
+            color: var(--color-text);
             cursor: pointer;
         }
 
         .form-group small {
             display: block;
             color: var(--color-text-muted);
-            margin-top: 5px;
-            font-size: 0.9em;
+            margin-top: var(--space-xs);
+            font-size: 0.85em;
+            line-height: 1.4;
         }
 
         .form-group small.indented {
-            margin-left: 30px;
+            margin-left: var(--space-xl);
         }
 
         .form-group code {
             background: var(--color-input-bg);
-            padding: 2px 6px;
+            padding: 2px var(--space-sm);
             border-radius: var(--radius-sm);
             font-family: 'Courier New', monospace;
             color: var(--color-primary);
+            font-size: 0.9em;
         }
 
         .color-picker-wrapper {
             display: flex;
-            gap: 10px;
+            gap: var(--space-sm);
             align-items: center;
         }
 
@@ -520,13 +616,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .checkbox-group {
             display: flex;
             align-items: center;
-            margin-top: 10px;
+            margin-top: var(--space-sm);
         }
 
         .checkbox-group input[type="checkbox"] {
             width: 24px;
             height: 24px;
-            margin-right: 10px;
+            margin-right: var(--space-sm);
             cursor: pointer;
         }
 
@@ -537,32 +633,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .section-title {
-            font-size: 1.3em;
-            color: var(--color-primary);
-            margin: 30px 0 20px 0;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--color-border);
-        }
-
-        .section-title:first-child {
-            margin-top: 0;
+            font-size: 1.4em;
+            color: var(--color-text);
+            margin: 0 0 var(--space-lg) 0;
+            padding-bottom: 0;
+            border-bottom: none;
+            letter-spacing: -0.02em;
+            font-weight: 800;
         }
 
         .btn {
             background: var(--color-primary);
             color: white;
-            padding: 15px 40px;
+            padding: var(--space-md) var(--space-xl);
             border: none;
             border-radius: var(--radius-md);
-            font-size: 1.1em;
+            font-size: 1.05em;
             cursor: pointer;
             width: 100%;
-            font-weight: 600;
-            transition: background 0.3s;
+            font-weight: 700;
+            transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
         }
 
         .btn:hover {
             background: var(--color-primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--color-primary-subtle);
+        }
+
+        .btn:active {
+            transform: translateY(0);
         }
 
         .btn:focus-visible {
@@ -577,7 +677,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
 
         .btn-secondary {
             background: var(--color-secondary-btn);
-            margin-top: 15px;
+            margin-top: var(--space-md);
         }
 
         .btn-secondary:hover {
@@ -587,18 +687,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .btn-test-db {
             background: var(--color-test-btn);
             color: white;
-            padding: 10px 20px;
+            padding: 10px var(--space-lg);
             border: none;
             border-radius: var(--radius-md);
-            font-size: 0.95em;
+            font-size: 0.9em;
             cursor: pointer;
-            font-weight: 600;
-            transition: background 0.3s;
-            margin-top: 5px;
+            font-weight: 700;
+            transition: background 0.2s, transform 0.2s;
         }
 
         .btn-test-db:hover {
             background: var(--color-test-btn-hover);
+            transform: translateY(-1px);
         }
 
         .btn-test-db:focus-visible {
@@ -606,15 +706,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             outline-offset: 2px;
         }
 
+        .btn-test-db:active:not(:disabled) {
+            transform: translateY(0) scale(0.97);
+        }
+
         .btn-test-db:disabled {
             opacity: 0.6;
             cursor: not-allowed;
         }
 
+        .btn-test-db.testing {
+            pointer-events: none;
+        }
+
+        .btn-test-db.testing::before {
+            content: '';
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: var(--space-sm);
+            vertical-align: middle;
+        }
+
         .db-test-result {
-            padding: 10px 15px;
+            padding: var(--space-sm) var(--space-md);
             border-radius: var(--radius-md);
-            margin-top: 10px;
+            margin-top: var(--space-sm);
             display: none;
             font-size: 0.95em;
         }
@@ -638,66 +759,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .alert {
-            padding: 15px;
+            padding: var(--space-md) var(--space-lg);
             border-radius: var(--radius-md);
-            margin-bottom: 20px;
+            margin-bottom: var(--space-lg);
+            border: 1.5px solid transparent;
         }
 
         .alert-error {
             background: var(--color-error-bg);
-            border-left: 4px solid var(--color-error-border);
+            border-color: var(--color-error-border);
             color: var(--color-error);
         }
 
         .alert-success {
             background: var(--color-success-bg);
-            border-left: 4px solid var(--color-success-border);
+            border-color: var(--color-success-border);
             color: var(--color-success);
         }
 
         .alert ul {
-            margin-left: 20px;
-            margin-top: 10px;
+            margin-left: var(--space-lg);
+            margin-top: var(--space-sm);
         }
 
         .info-box {
             background: var(--color-info-bg);
-            border-left: 4px solid var(--color-test-btn);
-            padding: 15px;
+            border: 1.5px solid var(--color-test-btn);
+            padding: var(--space-md) var(--space-lg);
             border-radius: var(--radius-md);
-            margin-bottom: 20px;
+            margin-bottom: var(--space-lg);
             color: var(--color-info);
+            line-height: 1.6;
+            font-size: 0.92em;
         }
 
         .info-box strong {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: var(--space-xs);
         }
 
         .radio-group {
-            margin-top: 10px;
+            margin-top: var(--space-sm);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
         }
 
         .radio-group label {
             display: flex;
             align-items: center;
-            padding: 12px;
-            border: 2px solid var(--color-border);
+            padding: var(--space-md) var(--space-lg);
+            border: 1.5px solid var(--color-border);
             border-radius: var(--radius-md);
-            margin-bottom: 10px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.2s ease;
+            background: var(--color-surface);
         }
 
         .radio-group label:hover {
+            border-color: var(--color-border-hover);
+            background: var(--color-surface-raised);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .radio-group label:has(input:checked) {
             border-color: var(--color-primary);
-            background: #fff5f5;
+            background: var(--color-primary-subtle);
+            box-shadow: 0 0 0 1px var(--color-primary);
         }
 
         .radio-group input[type="radio"] {
             width: 24px;
             height: 24px;
-            margin-right: 12px;
+            margin-right: var(--space-md);
             cursor: pointer;
             flex-shrink: 0;
         }
@@ -720,18 +854,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             display: block;
             color: var(--color-text-muted);
             font-size: 0.85em;
-            margin-top: 4px;
+            margin-top: var(--space-xs);
         }
 
         .warning-badge {
             display: inline-block;
             background: var(--color-warning);
             color: white;
-            padding: 2px 8px;
+            padding: 3px var(--space-sm);
             border-radius: var(--radius-sm);
-            font-size: 0.75em;
-            font-weight: 600;
-            margin-left: 8px;
+            font-size: 0.7em;
+            font-weight: 700;
+            margin-left: var(--space-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
         }
 
         .warning-badge--success {
@@ -739,11 +875,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .warning-badge--dev {
-            background: #7b1fa2;
+            background: var(--color-dev);
         }
 
         .custom-branch-input {
-            margin-top: 10px;
+            margin-top: var(--space-sm);
             display: none;
         }
 
@@ -753,30 +889,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
 
         .custom-branch-input input {
             width: 100%;
-            padding: 10px;
-            border: 2px solid var(--color-border);
+            padding: var(--space-sm) var(--space-md);
+            border: 1.5px solid var(--color-border);
             border-radius: var(--radius-md);
             font-size: 0.95em;
+            background: var(--color-surface);
+            color: var(--color-text);
+        }
+
+        .custom-branch-input input:focus {
+            outline: 2px solid transparent;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-subtle);
         }
 
         .requirement-box {
-            padding: 15px;
+            padding: var(--space-lg);
             border-radius: var(--radius-md);
-            margin-bottom: 15px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: var(--space-md);
+            border: 1.5px solid transparent;
         }
 
         .requirement-box.success {
             background: var(--color-success-bg);
-            border-left: 4px solid var(--color-success-border);
+            border-color: var(--color-success-border);
             color: var(--color-success);
         }
 
         .requirement-box.error {
             background: var(--color-error-bg);
-            border-left: 4px solid var(--color-error-border);
+            border-color: var(--color-error-border);
             color: var(--color-error);
         }
 
@@ -785,7 +929,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .requirement-icon {
-            font-size: 2em;
+            font-size: 2.2em;
+            line-height: 1;
         }
 
         .requirement-detail {
@@ -793,28 +938,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .requirement-title {
-            font-size: 1.2em;
+            font-size: 1.15em;
+            font-weight: 700;
         }
 
         .requirement-status {
-            font-size: 1em;
-            margin-top: 5px;
+            font-size: 0.95em;
+            margin-top: var(--space-xs);
         }
 
         .requirement-sub {
             font-size: 0.85em;
-            opacity: 0.8;
-            margin-top: 2px;
+            opacity: 0.75;
+            margin-top: var(--space-xs);
         }
 
         .requirement-fix {
-            margin-top: 3px;
+            margin-top: var(--space-xs);
         }
 
         .requirement-fix-inner {
-            margin-top: 5px;
-            padding: 8px;
-            background: rgba(255, 255, 255, 0.3);
+            margin-top: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
+            background: rgba(128, 128, 128, 0.1);
             border-radius: var(--radius-sm);
             font-size: 0.9em;
         }
@@ -822,14 +968,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         .requirements-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 20px;
+            gap: var(--space-md);
+            margin-bottom: var(--space-lg);
         }
 
         .alert-error-log {
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #fcc;
+            margin-top: var(--space-md);
+            padding-top: var(--space-md);
+            border-top: 1px solid var(--color-error-border);
+            opacity: 0.7;
         }
 
         .info-box a {
@@ -838,24 +985,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         @media (max-width: 768px) {
+            :root {
+                --space-lg: 20px;
+                --space-xl: 28px;
+                --space-2xl: 36px;
+            }
+
+            body {
+                padding: var(--space-md);
+            }
+
             .requirements-grid {
                 grid-template-columns: 1fr;
             }
 
-            .content {
-                padding: 20px;
-            }
-
             .setup-header {
-                padding: 20px;
+                padding: var(--space-xl) var(--space-lg);
             }
 
             .setup-header h1 {
-                font-size: 1.8em;
+                font-size: 1.7em;
             }
 
             .btn {
-                padding: 14px 20px;
+                padding: var(--space-md) var(--space-lg);
                 font-size: 1em;
             }
 
@@ -869,60 +1022,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         @media (max-width: 480px) {
-            body {
-                padding: 10px;
+            :root {
+                --space-lg: 16px;
+                --space-xl: 24px;
+                --space-2xl: 32px;
             }
 
-            .content {
-                padding: 16px;
+            body {
+                padding: var(--space-sm);
             }
 
             .container {
                 border-radius: var(--radius-md);
             }
 
+            .setup-header {
+                text-align: center;
+            }
+
             .radio-group label {
-                padding: 10px;
+                padding: var(--space-sm) var(--space-md);
             }
         }
 
         .password-wrapper {
             position: relative;
             display: flex;
-            gap: 10px;
+            gap: var(--space-sm);
             align-items: center;
         }
 
         .password-wrapper input {
             flex: 1;
-            padding: 12px;
-            border: 2px solid var(--color-border);
+            padding: 14px var(--space-md);
+            border: 1.5px solid var(--color-border);
             border-radius: var(--radius-md);
-            font-size: 1em;
-            transition: border-color 0.3s;
+            font-size: 0.95em;
+            background: var(--color-surface);
+            color: var(--color-text);
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
 
         .password-wrapper input:focus {
-            outline: 2px solid var(--color-primary);
-            outline-offset: 2px;
+            outline: 2px solid transparent;
             border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-subtle);
         }
 
         .toggle-password {
             background: var(--color-input-bg);
-            border: 2px solid var(--color-border);
-            padding: 12px 20px;
+            border: 1.5px solid var(--color-border);
+            padding: var(--space-md) var(--space-lg);
             border-radius: var(--radius-md);
             cursor: pointer;
-            font-size: 0.9em;
-            transition: all 0.3s;
+            font-size: 0.85em;
+            transition: all 0.2s;
             white-space: nowrap;
-            font-weight: 500;
+            font-weight: 600;
             min-height: 44px;
+            color: var(--color-text-muted);
         }
 
         .toggle-password:hover {
-            background: #e8e8e8;
+            background: var(--color-surface-raised);
             border-color: var(--color-border-hover);
         }
 
@@ -943,11 +1105,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         }
 
         .pin-input-wrapper {
-            margin-top: 15px;
-            padding: 15px;
-            background: #f8f9fa;
+            margin-top: var(--space-md);
+            padding: var(--space-md);
+            background: var(--color-surface-raised);
             border-radius: var(--radius-md);
-            border: 2px solid var(--color-border);
+            border: 1.5px solid var(--color-border);
             display: none;
         }
 
@@ -957,26 +1119,728 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
 
         .pin-input-wrapper input {
             width: 100%;
-            padding: 12px;
-            border: 2px solid var(--color-border);
+            padding: var(--space-md);
+            border: 1.5px solid var(--color-border);
             border-radius: var(--radius-md);
             font-size: 1.2em;
             text-align: center;
             letter-spacing: 0.3em;
             font-family: monospace;
+            background: var(--color-surface);
+            color: var(--color-text);
         }
 
         .pin-input-wrapper input:focus {
-            outline: 2px solid var(--color-primary);
-            outline-offset: 2px;
+            outline: 2px solid transparent;
             border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-subtle);
         }
 
         .pin-input-wrapper small {
             display: block;
-            margin-top: 8px;
+            margin-top: var(--space-sm);
             color: var(--color-text-muted);
             text-align: center;
+        }
+
+        /* ═══ Footer ═══ */
+
+        .setup-footer {
+            padding: var(--space-lg) var(--space-2xl);
+            border-top: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-md);
+            flex-wrap: wrap;
+        }
+
+        .setup-footer-brand {
+            font-size: 0.8em;
+            color: var(--color-text-muted);
+            font-weight: 600;
+        }
+
+        .setup-footer-links {
+            display: flex;
+            gap: var(--space-lg);
+            list-style: none;
+        }
+
+        .setup-footer-links a {
+            font-size: 0.82em;
+            color: var(--color-text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-xs);
+            min-height: 44px;
+        }
+
+        .setup-footer-links a:hover {
+            color: var(--color-text);
+        }
+
+        .setup-footer-links svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 480px) {
+            .setup-footer {
+                flex-direction: column;
+                text-align: center;
+                padding: var(--space-md) var(--space-lg);
+            }
+
+            .setup-footer-links {
+                gap: var(--space-md);
+            }
+        }
+
+        /* ═══ Inline validation ═══ */
+
+        .form-group.has-error input,
+        .form-group.has-error .password-wrapper input {
+            border-color: var(--color-error-border);
+            box-shadow: 0 0 0 3px var(--color-error-bg);
+        }
+
+        .form-group.has-error label {
+            color: var(--color-error);
+        }
+
+        .validation-msg {
+            display: none;
+            font-size: 0.84em;
+            font-weight: 600;
+            color: var(--color-error);
+            margin-top: var(--space-xs);
+            animation: validationIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .form-group.has-error .validation-msg {
+            display: block;
+        }
+
+        @keyframes validationIn {
+            from {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Shake the input on validation fail */
+        .form-group.shake input,
+        .form-group.shake .password-wrapper input {
+            animation: inputShake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+        }
+
+        @keyframes inputShake {
+
+            10%,
+            90% {
+                transform: translateX(-1px);
+            }
+
+            20%,
+            80% {
+                transform: translateX(2px);
+            }
+
+            30%,
+            50%,
+            70% {
+                transform: translateX(-3px);
+            }
+
+            40%,
+            60% {
+                transform: translateX(3px);
+            }
+        }
+
+        /* ═══ Delight — micro-interactions ═══ */
+
+        /* Container entrance */
+        .container {
+            animation: containerIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @keyframes containerIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.98);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Form group subtle hover */
+        .form-group {
+            padding: var(--space-sm) var(--space-md);
+            margin-left: calc(-1 * var(--space-md));
+            margin-right: calc(-1 * var(--space-md));
+            border-radius: var(--radius-md);
+            transition: background 0.2s;
+        }
+
+        .form-group:focus-within {
+            background: var(--color-primary-subtle);
+        }
+
+        /* Requirement check animation */
+        .requirement-box {
+            transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .requirement-box.success .requirement-icon {
+            animation: checkPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+            animation-delay: 0.3s;
+        }
+
+        @keyframes checkPop {
+            0% {
+                transform: scale(0.6);
+                opacity: 0.5;
+            }
+
+            60% {
+                transform: scale(1.2);
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* DB test result slide-in */
+        .db-test-result[style*="display: block"] {
+            animation: resultSlide 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @keyframes resultSlide {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+                max-height: 0;
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+                max-height: 100px;
+            }
+        }
+
+        /* Success pulse on DB test result */
+        .db-test-result.success {
+            animation: resultSlide 0.35s cubic-bezier(0.22, 1, 0.36, 1) both,
+                successPulse 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both;
+        }
+
+        @keyframes successPulse {
+            0% {
+                box-shadow: 0 0 0 0 var(--color-success-border);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px transparent;
+            }
+
+            100% {
+                box-shadow: none;
+            }
+        }
+
+        /* Completed wizard dot pop */
+        .wizard-dot.completed .wizard-dot-icon {
+            animation: dotComplete 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes dotComplete {
+            0% {
+                transform: scale(1);
+            }
+
+            40% {
+                transform: scale(1.3);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        /* Password toggle tactile click */
+        .toggle-password:active {
+            transform: scale(0.95);
+        }
+
+        /* Radio card selection pop */
+        .radio-group label:has(input:checked) {
+            animation: cardSelect 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes cardSelect {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.01);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        /* ═══ Optimize — performance hints ═══ */
+
+        .wizard-fill {
+            will-change: transform;
+        }
+
+        .wizard-step {
+            contain: layout style;
+        }
+
+        .wizard-dot-icon {
+            will-change: transform;
+        }
+
+        /* ══════════════════════════════════════
+           WIZARD — Cinematic step flow
+           ══════════════════════════════════════ */
+        :root {
+            --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --spring-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .wizard-progress {
+            margin-bottom: var(--space-xl);
+            position: relative;
+            padding: 0 var(--space-sm);
+        }
+
+        .wizard-dots {
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .wizard-track {
+            position: absolute;
+            top: 18px;
+            left: 36px;
+            right: 36px;
+            height: 3px;
+            background: var(--color-border);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .wizard-fill {
+            height: 100%;
+            width: 100%;
+            background: var(--color-primary);
+            border-radius: 2px;
+            transform-origin: left;
+            /* Animated by JS spring solver */
+        }
+
+        .wizard-dot {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--space-sm);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            z-index: 1;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .wizard-dot:focus-visible .wizard-dot-icon {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 3px;
+        }
+
+        .wizard-dot[disabled] {
+            cursor: default;
+            pointer-events: none;
+        }
+
+        .wizard-dot-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.82em;
+            font-weight: 700;
+            background: var(--color-surface);
+            border: 2.5px solid var(--color-border);
+            color: var(--color-text-muted);
+            transition: transform 0.5s var(--spring-bounce),
+                background 0.3s,
+                border-color 0.3s,
+                color 0.3s,
+                box-shadow 0.3s;
+        }
+
+        .wizard-dot.active .wizard-dot-icon {
+            border-color: var(--color-primary);
+            background: var(--color-primary);
+            color: white;
+            transform: scale(1.25);
+            box-shadow: 0 0 0 4px var(--color-primary-subtle);
+        }
+
+        .wizard-dot.completed .wizard-dot-icon {
+            border-color: var(--color-success-border);
+            background: var(--color-success-border);
+            color: white;
+            transform: scale(1);
+        }
+
+        .wizard-dot-label {
+            font-size: 0.7em;
+            font-weight: 600;
+            color: var(--color-text-muted);
+            transition: color 0.3s;
+            white-space: nowrap;
+        }
+
+        .wizard-dot.active .wizard-dot-label {
+            color: var(--color-primary);
+        }
+
+        .wizard-dot.completed .wizard-dot-label {
+            color: var(--color-success);
+        }
+
+        /* Step containers */
+        .wizard-step {
+            display: none;
+        }
+
+        .wizard-step.active {
+            display: block;
+        }
+
+        /* Step transition animations */
+        @keyframes stepExitLeft {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+
+            to {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+        }
+
+        @keyframes stepExitRight {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+
+            to {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+        }
+
+        @keyframes stepEnterRight {
+            from {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes stepEnterLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Field stagger — children cascade in after step entrance */
+        .wizard-step[data-entering]>* {
+            animation: fieldReveal 0.45s var(--spring-smooth) both;
+        }
+
+        .wizard-step[data-entering]> :nth-child(1) {
+            animation-delay: 60ms;
+        }
+
+        .wizard-step[data-entering]> :nth-child(2) {
+            animation-delay: 120ms;
+        }
+
+        .wizard-step[data-entering]> :nth-child(3) {
+            animation-delay: 180ms;
+        }
+
+        .wizard-step[data-entering]> :nth-child(4) {
+            animation-delay: 240ms;
+        }
+
+        .wizard-step[data-entering]> :nth-child(5) {
+            animation-delay: 300ms;
+        }
+
+        .wizard-step[data-entering]> :nth-child(6) {
+            animation-delay: 360ms;
+        }
+
+        .wizard-step[data-entering]> :nth-child(7) {
+            animation-delay: 420ms;
+        }
+
+        .wizard-step[data-entering]> :nth-child(8) {
+            animation-delay: 480ms;
+        }
+
+        @keyframes fieldReveal {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Navigation buttons */
+        .wizard-nav {
+            display: flex;
+            gap: var(--space-md);
+            margin-top: var(--space-xl);
+            padding-top: var(--space-lg);
+            border-top: 1px solid var(--color-border);
+        }
+
+        .wizard-nav-btn {
+            padding: 14px 32px;
+            border: 1.5px solid transparent;
+            border-radius: var(--radius-md);
+            font-size: 0.95em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s;
+            outline: none;
+            min-height: 48px;
+            letter-spacing: 0.01em;
+        }
+
+        .wizard-nav-btn:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
+        .wizard-nav-btn--back {
+            background: transparent;
+            border-color: var(--color-border);
+            color: var(--color-text-muted);
+        }
+
+        .wizard-nav-btn--back:hover {
+            border-color: var(--color-text-muted);
+            color: var(--color-text);
+            background: var(--color-input-bg);
+        }
+
+        .wizard-nav-btn--next {
+            background: var(--color-primary);
+            color: white;
+            margin-left: auto;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .wizard-nav-btn--next:hover:not(:disabled) {
+            background: var(--color-primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--color-primary-subtle);
+        }
+
+        .wizard-nav-btn--next:active:not(:disabled) {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        .wizard-nav-btn--next:disabled {
+            background: var(--color-border);
+            color: var(--color-text-muted);
+            cursor: not-allowed;
+        }
+
+        /* Gate shimmer on unlocked next button */
+        .wizard-gate-shimmer:not(:disabled)::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.25) 50%, transparent 60%);
+            animation: shimmer 2.5s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+
+            0%,
+            100% {
+                transform: translateX(-120%);
+            }
+
+            50% {
+                transform: translateX(120%);
+            }
+        }
+
+        /* Submit button special state */
+        .wizard-nav-btn--submit {
+            padding: 14px 40px;
+            font-size: 1.05em;
+        }
+
+        .wizard-nav-btn--submit.submitting {
+            pointer-events: none;
+        }
+
+        .wizard-nav-btn--submit.submitting::before {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: var(--space-sm);
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Step entrance — initial page load */
+        .wizard-step.initial-reveal>* {
+            animation: fieldReveal 0.5s var(--spring-smooth) both;
+        }
+
+        .wizard-step.initial-reveal> :nth-child(1) {
+            animation-delay: 100ms;
+        }
+
+        .wizard-step.initial-reveal> :nth-child(2) {
+            animation-delay: 200ms;
+        }
+
+        .wizard-step.initial-reveal> :nth-child(3) {
+            animation-delay: 300ms;
+        }
+
+        .wizard-step.initial-reveal> :nth-child(4) {
+            animation-delay: 400ms;
+        }
+
+        /* Section title inside wizard steps — progress bar replaces the border */
+        .wizard-step .section-title {
+            border-bottom: none;
+            margin-top: 0;
+            padding-bottom: 0;
+            margin-bottom: var(--space-lg);
+        }
+
+        @media (max-width: 768px) {
+            .wizard-dot-label {
+                font-size: 0.6em;
+            }
+
+            .wizard-dot-icon {
+                width: 30px;
+                height: 30px;
+                font-size: 0.75em;
+            }
+
+            .wizard-track {
+                top: 15px;
+                left: 28px;
+                right: 28px;
+            }
+
+            .wizard-nav {
+                flex-direction: column-reverse;
+                gap: var(--space-sm);
+            }
+
+            .wizard-nav-btn--next {
+                margin-left: 0;
+                width: 100%;
+                text-align: center;
+            }
+
+            .wizard-nav-btn--back {
+                width: 100%;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .wizard-dot-label {
+                display: none;
+            }
+
+            .wizard-progress {
+                margin-bottom: var(--space-lg);
+            }
+        }
+
+        /* Reduced motion — respect user preference */
+        @media (prefers-reduced-motion: reduce) {
+
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
@@ -985,57 +1849,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
     <main class="container">
         <header class="setup-header">
             <h1>intraRP Setup</h1>
-            <p>Konfigurieren Sie Ihr Intranet-System</p>
+            <p>Tool zum Aufsetzen & Konfigurieren von intraRP</p>
         </header>
 
         <div class="content">
-            <?php if (!$canProceed): ?>
-                <div class="alert alert-error" role="alert">
-                    <strong>SETUP BLOCKIERT</strong>
-                    <p>Das Setup kann nicht fortgesetzt werden, da wichtige System-Anforderungen nicht erfüllt sind. Bitte beheben Sie die unten aufgeführten Probleme.</p>
-                </div>
-            <?php endif; ?>
-
-            <h2 class="section-title">System-Anforderungen</h2>
-
-            <div class="requirements-grid">
-                <div class="requirement-box <?php echo $phpVersionOk ? 'success' : 'error'; ?>">
-                    <span class="requirement-icon" aria-hidden="true"><?php echo $phpVersionOk ? '✓' : '✗'; ?></span>
-                    <div class="requirement-detail">
-                        <strong class="requirement-title">PHP Version</strong>
-                        <div class="requirement-status">
-                            <?php if ($phpVersionOk): ?>
-                                Installiert: <strong><?php echo $phpVersion; ?></strong>
-                                <div class="requirement-sub">Erforderlich: >= <?php echo $requiredPhpVersion; ?></div>
-                            <?php else: ?>
-                                <div class="requirement-fix">Installiert: <strong><?php echo $phpVersion; ?></strong></div>
-                                <div class="requirement-fix-inner">
-                                    <strong>Erforderlich: >= <?php echo $requiredPhpVersion; ?></strong><br>
-                                    <small>Bitte aktualisieren Sie PHP über Ihr Hosting-Panel</small>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="requirement-box <?php echo $gitAvailable ? 'success' : 'error'; ?>">
-                    <span class="requirement-icon" aria-hidden="true"><?php echo $gitAvailable ? '✓' : '✗'; ?></span>
-                    <div class="requirement-detail">
-                        <strong class="requirement-title">Git</strong>
-                        <div class="requirement-status">
-                            <?php if ($gitAvailable): ?>
-                                <strong>Verfügbar</strong>
-                                <div class="requirement-sub">Git ist installiert und funktionsfähig</div>
-                            <?php else: ?>
-                                <div class="requirement-fix-inner">
-                                    <strong>Nicht verfügbar!</strong><br>
-                                    <small>Git muss auf dem Server installiert sein</small>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <?php if (!empty($errors)): ?>
                 <div class="alert alert-error" role="alert">
@@ -1049,7 +1866,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                         <small>Fehler wurden in <code>setup_error.log</code> protokolliert</small>
                     </div>
                 </div>
-
                 <?php if (!empty($success)): ?>
                     <div class="info-box">
                         <strong>Teilweise erfolgreich</strong>
@@ -1072,219 +1888,688 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                 </div>
             <?php endif; ?>
 
-            <form method="POST" action="" id="setup-form">
-                <h2 class="section-title">Git Repository</h2>
-
-                <div class="form-group">
-                    <label>Version auswählen</label>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="git_branch" value="release" checked>
-                            <span>
-                                <div>
-                                    <strong>Letzter Release</strong>
-                                    <span class="warning-badge warning-badge--success">EMPFOHLEN</span>
-                                </div>
-                                <small>Stabile Version - empfohlen für Produktivumgebungen</small>
-                            </span>
-                        </label>
-                        <label>
-                            <input type="radio" name="git_branch" value="main">
-                            <span>
-                                <div>
-                                    <strong>Main Branch</strong>
-                                    <span class="warning-badge">EXPERIMENTELL</span>
-                                </div>
-                                <small>Neueste Entwicklungsversion - kann instabil sein</small>
-                            </span>
-                        </label>
-                        <?php if ($devMode): ?>
-                            <label>
-                                <input type="radio" name="git_branch" value="custom" id="custom_branch_radio">
-                                <span>
-                                    <div>
-                                        <strong>Custom Branch</strong>
-                                        <span class="warning-badge warning-badge--dev">DEV</span>
-                                    </div>
-                                    <small>Eigenen Branch angeben · für Entwicklung</small>
-                                </span>
-                            </label>
-                        <?php endif; ?>
+            <!-- Wizard progress bar -->
+            <nav class="wizard-progress" aria-label="Setup-Fortschritt">
+                <div class="wizard-dots">
+                    <div class="wizard-track">
+                        <div class="wizard-fill" id="wizard-fill"></div>
                     </div>
-                    <?php if ($devMode): ?>
-                        <div class="custom-branch-input" id="custom_branch_input">
-                            <input type="text" name="custom_branch" placeholder="z.B. feature/neue-funktion" id="custom_branch_field">
+                    <button type="button" class="wizard-dot active" data-dot="0" aria-current="step">
+                        <span class="wizard-dot-icon">1</span>
+                        <span class="wizard-dot-label">Prüfung</span>
+                    </button>
+                    <button type="button" class="wizard-dot" data-dot="1" disabled>
+                        <span class="wizard-dot-icon">2</span>
+                        <span class="wizard-dot-label">Git</span>
+                    </button>
+                    <button type="button" class="wizard-dot" data-dot="2" disabled>
+                        <span class="wizard-dot-icon">3</span>
+                        <span class="wizard-dot-label">Datenbank</span>
+                    </button>
+                    <button type="button" class="wizard-dot" data-dot="3" disabled>
+                        <span class="wizard-dot-icon">4</span>
+                        <span class="wizard-dot-label">Discord</span>
+                    </button>
+                    <button type="button" class="wizard-dot" data-dot="4" disabled>
+                        <span class="wizard-dot-icon">5</span>
+                        <span class="wizard-dot-label">System</span>
+                    </button>
+                </div>
+            </nav>
+
+            <form method="POST" action="" id="setup-form" novalidate>
+
+                <!-- Step 0: System-Anforderungen (Gate) -->
+                <section class="wizard-step active initial-reveal" data-step="0" aria-label="System-Anforderungen">
+                    <h2 class="section-title">System-Anforderungen</h2>
+
+                    <?php if (!$canProceed): ?>
+                        <div class="alert alert-error" role="alert">
+                            <strong>SETUP BLOCKIERT</strong>
+                            <p>Das Setup kann nicht fortgesetzt werden, da wichtige System-Anforderungen nicht erfüllt sind.</p>
                         </div>
                     <?php endif; ?>
-                    <small>Repository: <code>github.com/EmergencyForge/intraRP</code></small>
-                </div>
 
-                <h2 class="section-title">Datenbank-Konfiguration</h2>
+                    <div class="requirements-grid">
+                        <div class="requirement-box <?php echo $phpVersionOk ? 'success' : 'error'; ?>">
+                            <span class="requirement-icon" aria-hidden="true"><?php echo $phpVersionOk ? '✓' : '✗'; ?></span>
+                            <div class="requirement-detail">
+                                <strong class="requirement-title">PHP Version</strong>
+                                <div class="requirement-status">
+                                    <?php if ($phpVersionOk): ?>
+                                        Installiert: <strong><?php echo $phpVersion; ?></strong>
+                                        <div class="requirement-sub">Erforderlich: >= <?php echo $requiredPhpVersion; ?></div>
+                                    <?php else: ?>
+                                        <div class="requirement-fix">Installiert: <strong><?php echo $phpVersion; ?></strong></div>
+                                        <div class="requirement-fix-inner">
+                                            <strong>Erforderlich: >= <?php echo $requiredPhpVersion; ?></strong><br>
+                                            <small>Bitte aktualisieren Sie PHP über Ihr Hosting-Panel</small>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
 
-                <div class="form-group">
-                    <label for="db_host">Datenbank-Host</label>
-                    <input type="text" id="db_host" name="db_host" value="localhost" required autocomplete="off">
-                    <small>Host der Datenbank (meistens <code>localhost</code>)</small>
-                </div>
-
-                <div class="form-group">
-                    <label for="db_user">Datenbank-Benutzer</label>
-                    <input type="text" id="db_user" name="db_user" value="root" required autocomplete="off">
-                    <small>Benutzername für die Datenbank</small>
-                </div>
-
-                <div class="form-group">
-                    <label for="db_pass">Datenbank-Passwort</label>
-                    <div class="password-wrapper">
-                        <input type="password" id="db_pass" name="db_pass" autocomplete="off">
-                        <button type="button" class="toggle-password" aria-pressed="false" aria-label="Passwort anzeigen" onclick="togglePassword('db_pass', this)">Anzeigen</button>
+                        <div class="requirement-box <?php echo $gitAvailable ? 'success' : 'error'; ?>">
+                            <span class="requirement-icon" aria-hidden="true"><?php echo $gitAvailable ? '✓' : '✗'; ?></span>
+                            <div class="requirement-detail">
+                                <strong class="requirement-title">Git</strong>
+                                <div class="requirement-status">
+                                    <?php if ($gitAvailable): ?>
+                                        <strong>Verfügbar</strong>
+                                        <div class="requirement-sub">Git ist installiert und funktionsfähig</div>
+                                    <?php else: ?>
+                                        <div class="requirement-fix-inner">
+                                            <strong>Nicht verfügbar!</strong><br>
+                                            <small>Git muss auf dem Server installiert sein</small>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <small>Passwort für die Datenbank (optional)</small>
-                </div>
 
-                <div class="form-group">
-                    <label for="db_name">Datenbank-Name *</label>
-                    <input type="text" id="db_name" name="db_name" value="intrarp" required autocomplete="off">
-                    <small>Name der zu verwendenden Datenbank</small>
-                </div>
-
-                <div class="form-group">
-                    <button type="button" class="btn-test-db" id="btn-test-db" onclick="testDatabaseConnection()">🔌 Verbindung testen</button>
-                    <div class="db-test-result" id="db-test-result"></div>
-                </div>
-
-                <h2 class="section-title">Discord-Integration</h2>
-
-                <div class="info-box">
-                    <strong>Discord Applikation benötigt</strong>
-                    Für die Discord-Integration muss eine Discord-Applikation erstellt werden. Eine detaillierte Anleitung finden Sie hier:
-                    <a href="https://emergencyforge.de/wiki.html#discord-app-erstellen" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
-                </div>
-
-                <div class="form-group">
-                    <label for="discord_client_id">Discord Client ID *</label>
-                    <input type="text" id="discord_client_id" name="discord_client_id" required autocomplete="off">
-                    <small>Client ID der Discord-Anwendung</small>
-                </div>
-
-                <div class="form-group">
-                    <label for="discord_client_secret">Discord Client Secret *</label>
-                    <div class="password-wrapper">
-                        <input type="password" id="discord_client_secret" name="discord_client_secret" required autocomplete="off">
-                        <button type="button" class="toggle-password" aria-pressed="false" aria-label="Passwort anzeigen" onclick="togglePassword('discord_client_secret', this)">Anzeigen</button>
+                    <div class="wizard-nav">
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--next wizard-gate-shimmer" data-wizard-next <?php echo !$canProceed ? 'disabled' : ''; ?>>
+                            <?php echo $canProceed ? 'Weiter' : 'Anforderungen nicht erfüllt'; ?>
+                        </button>
                     </div>
-                    <small>Client Secret der Discord-Anwendung</small>
-                </div>
+                </section>
 
-                <h2 class="section-title">System-Konfiguration</h2>
+                <!-- Step 1: Git Repository -->
+                <section class="wizard-step" data-step="1" aria-label="Git Repository">
+                    <h2 class="section-title">Git Repository</h2>
 
-                <div class="form-group">
-                    <label for="domain">Domain</label>
-                    <input type="text" id="domain" name="domain" value="<?php echo htmlspecialchars($defaultDomain); ?>" required>
-                    <small>Die Domain unter der das System erreichbar ist (ohne http/https)</small>
-                </div>
+                    <div class="form-group">
+                        <label>Version auswählen</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="git_branch" value="release" checked>
+                                <span>
+                                    <div>
+                                        <strong>Letzter Release</strong>
+                                        <span class="warning-badge warning-badge--success">EMPFOHLEN</span>
+                                    </div>
+                                    <small>Stabile Version - empfohlen für Produktivumgebungen</small>
+                                </span>
+                            </label>
+                            <label>
+                                <input type="radio" name="git_branch" value="main">
+                                <span>
+                                    <div>
+                                        <strong>Main Branch</strong>
+                                        <span class="warning-badge">EXPERIMENTELL</span>
+                                    </div>
+                                    <small>Neueste Entwicklungsversion - kann instabil sein</small>
+                                </span>
+                            </label>
+                            <?php if ($devMode): ?>
+                                <label>
+                                    <input type="radio" name="git_branch" value="custom" id="custom_branch_radio">
+                                    <span>
+                                        <div>
+                                            <strong>Custom Branch</strong>
+                                            <span class="warning-badge warning-badge--dev">DEV</span>
+                                        </div>
+                                        <small>Eigenen Branch angeben · für Entwicklung</small>
+                                    </span>
+                                </label>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($devMode): ?>
+                            <div class="custom-branch-input" id="custom_branch_input">
+                                <input type="text" name="custom_branch" placeholder="z.B. feature/neue-funktion" id="custom_branch_field">
+                            </div>
+                        <?php endif; ?>
+                        <small>Repository: <code>github.com/EmergencyForge/intraRP</code></small>
+                    </div>
 
-                <div class="form-group">
-                    <label for="base_path">Base Path</label>
-                    <input type="text" id="base_path" name="base_path" value="<?php echo htmlspecialchars($defaultBasePath); ?>" required>
-                    <small>Der Pfad zur Installation (z.B. <code>/</code> für Root oder <code>/intrarp/</code> für Unterverzeichnis)</small>
-                </div>
+                    <div class="wizard-nav">
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--back" data-wizard-prev>Zurück</button>
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--next" data-wizard-next>Weiter</button>
+                    </div>
+                </section>
 
-                <div class="info-box">
-                    <strong>ℹ️ Hinweis:</strong>
-                    Die hier eingegebenen Datenbank- und Discord-Credentials werden in der <code>/.env</code> Datei gespeichert und können später dort angepasst werden. Alle weiteren System-Einstellungen (z.B. System-Name, Farben, Server-Informationen) werden nach dem Setup über das Admin-Panel in der Datenbank konfiguriert.
-                </div>
+                <!-- Step 2: Datenbank-Konfiguration -->
+                <section class="wizard-step" data-step="2" aria-label="Datenbank-Konfiguration">
+                    <h2 class="section-title">Datenbank-Konfiguration</h2>
 
-                <button type="submit" class="btn" id="submit-btn" <?php echo !$canProceed ? 'disabled' : ''; ?>>Setup durchführen</button>
+                    <div class="form-group">
+                        <label for="db_host">Datenbank-Host *</label>
+                        <input type="text" id="db_host" name="db_host" value="localhost" required autocomplete="off" aria-describedby="db_host-error">
+                        <small>Host der Datenbank (meistens <code>localhost</code>)</small>
+                        <span class="validation-msg" id="db_host-error" role="alert">Datenbank-Host ist erforderlich.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="db_user">Datenbank-Benutzer *</label>
+                        <input type="text" id="db_user" name="db_user" value="root" required autocomplete="off" aria-describedby="db_user-error">
+                        <small>Benutzername für die Datenbank</small>
+                        <span class="validation-msg" id="db_user-error" role="alert">Datenbank-Benutzer ist erforderlich.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="db_pass">Datenbank-Passwort</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="db_pass" name="db_pass" autocomplete="off">
+                            <button type="button" class="toggle-password" aria-pressed="false" aria-label="Passwort anzeigen" onclick="togglePassword('db_pass', this)">Anzeigen</button>
+                        </div>
+                        <small>Passwort für die Datenbank (optional)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="db_name">Datenbank-Name *</label>
+                        <input type="text" id="db_name" name="db_name" value="intrarp" required autocomplete="off" aria-describedby="db_name-error">
+                        <small>Name der zu verwendenden Datenbank</small>
+                        <span class="validation-msg" id="db_name-error" role="alert">Datenbank-Name ist erforderlich.</span>
+                    </div>
+
+                    <div class="form-group" id="db-test-group">
+                        <button type="button" class="btn-test-db" id="btn-test-db" onclick="testDatabaseConnection()">Verbindung testen</button>
+                        <div class="db-test-result" id="db-test-result"></div>
+                        <span class="validation-msg" id="db-test-validation" role="alert">Bitte testen Sie die Datenbankverbindung bevor Sie fortfahren.</span>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--back" data-wizard-prev>Zurück</button>
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--next" data-wizard-next>Weiter</button>
+                    </div>
+                </section>
+
+                <!-- Step 3: Discord-Integration -->
+                <section class="wizard-step" data-step="3" aria-label="Discord-Integration">
+                    <h2 class="section-title">Discord-Integration</h2>
+
+                    <div class="info-box">
+                        <strong>Discord Applikation benötigt</strong>
+                        Für die Discord-Integration muss eine Discord-Applikation erstellt werden. Eine detaillierte Anleitung finden Sie hier:
+                        <a href="https://emergencyforge.de/wiki.html#discord-app-erstellen" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="discord_client_id">Discord Client ID *</label>
+                        <input type="text" id="discord_client_id" name="discord_client_id" required autocomplete="off" aria-describedby="discord_client_id-error">
+                        <small>Client ID der Discord-Anwendung</small>
+                        <span class="validation-msg" id="discord_client_id-error" role="alert">Discord Client ID ist erforderlich.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="discord_client_secret">Discord Client Secret *</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="discord_client_secret" name="discord_client_secret" required autocomplete="off" aria-describedby="discord_client_secret-error">
+                            <button type="button" class="toggle-password" aria-pressed="false" aria-label="Passwort anzeigen" onclick="togglePassword('discord_client_secret', this)">Anzeigen</button>
+                        </div>
+                        <small>Client Secret der Discord-Anwendung</small>
+                        <span class="validation-msg" id="discord_client_secret-error" role="alert">Discord Client Secret ist erforderlich.</span>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--back" data-wizard-prev>Zurück</button>
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--next" data-wizard-next>Weiter</button>
+                    </div>
+                </section>
+
+                <!-- Step 4: System-Konfiguration + Submit -->
+                <section class="wizard-step" data-step="4" aria-label="System-Konfiguration">
+                    <h2 class="section-title">System-Konfiguration</h2>
+
+                    <div class="form-group">
+                        <label for="domain">Domain</label>
+                        <input type="text" id="domain" name="domain" value="<?php echo htmlspecialchars($defaultDomain); ?>" required aria-describedby="domain-error">
+                        <small>Die Domain unter der das System erreichbar ist (ohne http/https)</small>
+                        <span class="validation-msg" id="domain-error" role="alert">Domain ist erforderlich.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="base_path">Base Path</label>
+                        <input type="text" id="base_path" name="base_path" value="<?php echo htmlspecialchars($defaultBasePath); ?>" required aria-describedby="base_path-error">
+                        <small>Der Pfad zur Installation (z.B. <code>/</code> für Root oder <code>/intrarp/</code> für Unterverzeichnis)</small>
+                        <span class="validation-msg" id="base_path-error" role="alert">Base Path ist erforderlich.</span>
+                    </div>
+
+                    <div class="info-box">
+                        <strong>Hinweis:</strong>
+                        Die hier eingegebenen Datenbank- und Discord-Credentials werden in der <code>/.env</code> Datei gespeichert und können später dort angepasst werden. Alle weiteren System-Einstellungen (z.B. System-Name, Farben, Server-Informationen) werden nach dem Setup über das Admin-Panel in der Datenbank konfiguriert.
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--back" data-wizard-prev>Zurück</button>
+                        <button type="submit" class="wizard-nav-btn wizard-nav-btn--next wizard-nav-btn--submit" id="submit-btn" <?php echo !$canProceed ? 'disabled' : ''; ?>>Setup durchführen</button>
+                    </div>
+                </section>
+
             </form>
         </div>
+
+        <footer class="setup-footer">
+            <span class="setup-footer-brand">EmergencyForge</span>
+            <ul class="setup-footer-links">
+                <li>
+                    <a href="https://emergencyforge.de" target="_blank" rel="noopener noreferrer">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+                        </svg>
+                        Website
+                    </a>
+                </li>
+                <li>
+                    <a href="https://github.com/EmergencyForge" target="_blank" rel="noopener noreferrer">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+                        </svg>
+                        GitHub
+                    </a>
+                </li>
+                <li>
+                    <a href="https://discord.gg/emergencyforge" target="_blank" rel="noopener noreferrer">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z" />
+                        </svg>
+                        Discord
+                    </a>
+                </li>
+            </ul>
+        </footer>
     </main>
 
     <script>
-        function togglePassword(fieldId, button) {
-            const field = document.getElementById(fieldId);
-            const isHidden = field.type === 'password';
-            field.type = isHidden ? 'text' : 'password';
-            button.textContent = isHidden ? 'Verbergen' : 'Anzeigen';
-            button.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
-            button.setAttribute('aria-label', isHidden ? 'Passwort verbergen' : 'Passwort anzeigen');
-            button.classList.toggle('visible', isHidden);
-        }
+        (function() {
+            'use strict';
 
-        function testDatabaseConnection() {
-            const btn = document.getElementById('btn-test-db');
-            const result = document.getElementById('db-test-result');
-            const host = document.getElementById('db_host').value;
-            const user = document.getElementById('db_user').value;
-            const pass = document.getElementById('db_pass').value;
-            const name = document.getElementById('db_name').value;
+            // ─── Configuration ───
+            const TOTAL_STEPS = 5;
+            const EXIT_DURATION = 220;
+            const ENTER_DURATION = 380;
+            const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-            if (!name) {
-                result.className = 'db-test-result error';
-                result.textContent = 'Bitte einen Datenbank-Namen eingeben.';
-                result.style.display = 'block';
-                return;
+            // ─── DOM refs ───
+            const steps = document.querySelectorAll('.wizard-step');
+            const dots = document.querySelectorAll('.wizard-dot');
+            const fill = document.getElementById('wizard-fill');
+            const form = document.getElementById('setup-form');
+            let currentStep = 0;
+            let isTransitioning = false;
+            let dbTestPassed = false;
+
+            // ─── Spring physics solver ───
+            function createSpring(config = {}) {
+                const {
+                    stiffness = 170, damping = 14, mass = 1, precision = 0.01
+                } = config;
+                return {
+                    animate(from, to, onUpdate, onComplete) {
+                        let position = from;
+                        let velocity = 0;
+                        let lastTime = performance.now();
+                        let raf;
+
+                        function tick(now) {
+                            const dt = Math.min((now - lastTime) / 1000, 0.064); // cap at ~16fps minimum
+                            lastTime = now;
+
+                            const displacement = position - to;
+                            const springForce = -stiffness * displacement;
+                            const dampingForce = -damping * velocity;
+                            const acceleration = (springForce + dampingForce) / mass;
+
+                            velocity += acceleration * dt;
+                            position += velocity * dt;
+
+                            onUpdate(position);
+
+                            if (Math.abs(velocity) < precision && Math.abs(position - to) < precision) {
+                                onUpdate(to);
+                                if (onComplete) onComplete();
+                                return;
+                            }
+
+                            raf = requestAnimationFrame(tick);
+                        }
+
+                        raf = requestAnimationFrame(tick);
+                        return () => cancelAnimationFrame(raf);
+                    }
+                };
             }
 
-            btn.disabled = true;
-            btn.textContent = 'Teste...';
-            result.className = 'db-test-result loading';
-            result.textContent = 'Verbindung wird getestet...';
-            result.style.display = 'block';
-
-            const formData = new FormData();
-            formData.append('action', 'test_db');
-            formData.append('db_host', host);
-            formData.append('db_user', user);
-            formData.append('db_pass', pass);
-            formData.append('db_name', name);
-
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                result.className = 'db-test-result ' + (data.success ? 'success' : 'error');
-                result.textContent = (data.success ? '✓ ' : '✗ ') + data.message;
-            })
-            .catch(() => {
-                result.className = 'db-test-result error';
-                result.textContent = '✗ Fehler beim Testen der Verbindung.';
-            })
-            .finally(() => {
-                btn.disabled = false;
-                btn.textContent = 'Verbindung testen';
+            const progressSpring = createSpring({
+                stiffness: 120,
+                damping: 16,
+                mass: 1
             });
-        }
+            let cancelSpring = null;
 
-        <?php if ($devMode): ?>
-        (function() {
-            const customInput = document.getElementById('custom_branch_input');
-            const customField = document.getElementById('custom_branch_field');
-            const allRadios = document.querySelectorAll('input[name="git_branch"]');
+            // ─── Progress bar ───
+            let currentFillValue = 0;
 
-            allRadios.forEach(radio => {
-                radio.addEventListener('change', function() {
-                    if (this.value === 'custom') {
-                        customInput.classList.add('active');
-                        customField.focus();
+            function updateProgress(targetStep) {
+                const targetFill = targetStep / (TOTAL_STEPS - 1);
+
+                if (REDUCED_MOTION) {
+                    fill.style.transform = 'scaleX(' + targetFill + ')';
+                    currentFillValue = targetFill;
+                } else {
+                    if (cancelSpring) cancelSpring();
+                    cancelSpring = progressSpring.animate(
+                        currentFillValue,
+                        targetFill,
+                        function(v) {
+                            fill.style.transform = 'scaleX(' + v + ')';
+                        },
+                        function() {
+                            currentFillValue = targetFill;
+                        }
+                    );
+                    currentFillValue = targetFill;
+                }
+
+                // Update dots
+                dots.forEach(function(dot, i) {
+                    const icon = dot.querySelector('.wizard-dot-icon');
+                    dot.classList.remove('active', 'completed');
+                    dot.removeAttribute('aria-current');
+
+                    if (i === targetStep) {
+                        dot.classList.add('active');
+                        dot.setAttribute('aria-current', 'step');
+                        icon.textContent = String(i + 1);
+                    } else if (i < targetStep) {
+                        dot.classList.add('completed');
+                        icon.textContent = '✓';
+                        dot.disabled = false;
                     } else {
-                        customInput.classList.remove('active');
+                        icon.textContent = String(i + 1);
+                        dot.disabled = true;
+                    }
+                });
+            }
+
+            // ─── Step navigation ───
+            function goToStep(newIndex) {
+                if (newIndex === currentStep || newIndex < 0 || newIndex >= TOTAL_STEPS || isTransitioning) return;
+
+                const oldStep = steps[currentStep];
+                const newStep = steps[newIndex];
+                const forward = newIndex > currentStep;
+
+                if (REDUCED_MOTION) {
+                    oldStep.classList.remove('active');
+                    oldStep.style.display = 'none';
+                    newStep.style.display = 'block';
+                    newStep.classList.add('active');
+                    currentStep = newIndex;
+                    updateProgress(newIndex);
+                    newStep.scrollIntoView({
+                        block: 'nearest'
+                    });
+                    return;
+                }
+
+                isTransitioning = true;
+
+                // Animate old step out
+                oldStep.style.animation = forward ?
+                    'stepExitLeft ' + EXIT_DURATION + 'ms ease-in forwards' :
+                    'stepExitRight ' + EXIT_DURATION + 'ms ease-in forwards';
+
+                setTimeout(function() {
+                    // Hide old, show new
+                    oldStep.classList.remove('active');
+                    oldStep.style.display = 'none';
+                    oldStep.style.animation = '';
+                    oldStep.removeAttribute('data-entering');
+
+                    newStep.style.display = 'block';
+                    newStep.classList.add('active');
+                    newStep.setAttribute('data-entering', '');
+
+                    newStep.style.animation = forward ?
+                        'stepEnterRight ' + ENTER_DURATION + 'ms cubic-bezier(0.22, 1, 0.36, 1) forwards' :
+                        'stepEnterLeft ' + ENTER_DURATION + 'ms cubic-bezier(0.22, 1, 0.36, 1) forwards';
+
+                    currentStep = newIndex;
+                    updateProgress(newIndex);
+
+                    // Scroll to top of wizard
+                    document.querySelector('.wizard-progress').scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'nearest'
+                    });
+
+                    // Clean up after animation
+                    setTimeout(function() {
+                        newStep.style.animation = '';
+                        newStep.removeAttribute('data-entering');
+                        isTransitioning = false;
+
+                        // Focus first input in new step for keyboard users
+                        var firstInput = newStep.querySelector('input:not([type="hidden"]):not([type="radio"]), select, textarea');
+                        if (firstInput) firstInput.focus({
+                            preventScroll: true
+                        });
+                    }, ENTER_DURATION + 500); // wait for stagger to finish
+                }, EXIT_DURATION);
+            }
+
+            // ─── Inline validation ───
+
+            function validateStep(stepIndex) {
+                var step = steps[stepIndex];
+                var requiredInputs = step.querySelectorAll('input[required]');
+                var valid = true;
+
+                requiredInputs.forEach(function(input) {
+                    var group = input.closest('.form-group');
+                    if (!group) return;
+
+                    if (!input.value.trim()) {
+                        group.classList.add('has-error', 'shake');
+                        valid = false;
+                        setTimeout(function() {
+                            group.classList.remove('shake');
+                        }, 400);
+                    } else {
+                        group.classList.remove('has-error');
+                    }
+                });
+
+                // Step 2 (Database): require successful connection test
+                if (stepIndex === 2 && valid) {
+                    if (!dbTestPassed) {
+                        var testGroup = document.getElementById('db-test-group');
+                        if (testGroup) {
+                            testGroup.classList.add('has-error', 'shake');
+                            setTimeout(function() {
+                                testGroup.classList.remove('shake');
+                            }, 400);
+                        }
+                        valid = false;
+                    }
+                }
+
+                if (!valid) {
+                    var firstError = step.querySelector('.has-error input, .has-error .btn-test-db');
+                    if (firstError) firstError.focus();
+                }
+
+                return valid;
+            }
+
+            // Clear error state as user types
+            document.querySelectorAll('.form-group input[required]').forEach(function(input) {
+                input.addEventListener('input', function() {
+                    var group = this.closest('.form-group');
+                    if (group && this.value.trim()) {
+                        group.classList.remove('has-error');
                     }
                 });
             });
-        })();
-        <?php endif; ?>
 
-        // Prevent double-submit
-        document.getElementById('setup-form')?.addEventListener('submit', function() {
-            const btn = document.getElementById('submit-btn');
-            if (btn) {
+            // Reset DB test when connection fields change
+            ['db_host', 'db_user', 'db_pass', 'db_name'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', function() {
+                        dbTestPassed = false;
+                        var testGroup = document.getElementById('db-test-group');
+                        if (testGroup) testGroup.classList.remove('has-error');
+                        var result = document.getElementById('db-test-result');
+                        if (result) result.style.display = 'none';
+                    });
+                }
+            });
+
+            // ─── Event listeners ───
+
+            // Next/Back buttons
+            document.querySelectorAll('[data-wizard-next]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    if (validateStep(currentStep)) {
+                        goToStep(currentStep + 1);
+                    }
+                });
+            });
+
+            document.querySelectorAll('[data-wizard-prev]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    goToStep(currentStep - 1);
+                });
+            });
+
+            // Dot navigation (click on completed dots)
+            dots.forEach(function(dot) {
+                dot.addEventListener('click', function() {
+                    var target = parseInt(this.getAttribute('data-dot'));
+                    if (!this.disabled && target !== currentStep) {
+                        goToStep(target);
+                    }
+                });
+            });
+
+            // Keyboard: allow arrow keys on dots
+            document.querySelector('.wizard-dots').addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    var next = currentStep + 1;
+                    if (next < TOTAL_STEPS && !dots[next].disabled) goToStep(next);
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (currentStep > 0) goToStep(currentStep - 1);
+                }
+            });
+
+            // ─── Toggle password ───
+            window.togglePassword = function(fieldId, button) {
+                var field = document.getElementById(fieldId);
+                var isHidden = field.type === 'password';
+                field.type = isHidden ? 'text' : 'password';
+                button.textContent = isHidden ? 'Verbergen' : 'Anzeigen';
+                button.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+                button.setAttribute('aria-label', isHidden ? 'Passwort verbergen' : 'Passwort anzeigen');
+                button.classList.toggle('visible', isHidden);
+            };
+
+            // ─── Database connection test ───
+            window.testDatabaseConnection = function() {
+                var btn = document.getElementById('btn-test-db');
+                var result = document.getElementById('db-test-result');
+                var host = document.getElementById('db_host').value;
+                var user = document.getElementById('db_user').value;
+                var pass = document.getElementById('db_pass').value;
+                var name = document.getElementById('db_name').value;
+
+                if (!name) {
+                    result.className = 'db-test-result error';
+                    result.textContent = 'Bitte einen Datenbank-Namen eingeben.';
+                    result.style.display = 'block';
+                    return;
+                }
+
                 btn.disabled = true;
-                btn.textContent = 'Setup wird durchgeführt...';
-            }
-        });
+                btn.classList.add('testing');
+                btn.textContent = 'Teste...';
+                result.className = 'db-test-result loading';
+                result.textContent = 'Verbindung wird getestet...';
+                result.style.display = 'block';
+
+                var formData = new FormData();
+                formData.append('action', 'test_db');
+                formData.append('db_host', host);
+                formData.append('db_user', user);
+                formData.append('db_pass', pass);
+                formData.append('db_name', name);
+
+                fetch(window.location.href, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(function(r) {
+                        return r.json();
+                    })
+                    .then(function(data) {
+                        dbTestPassed = data.success;
+                        result.className = 'db-test-result ' + (data.success ? 'success' : 'error');
+                        result.textContent = (data.success ? '✓ ' : '✗ ') + data.message;
+                        // Clear validation error if test passed
+                        if (data.success) {
+                            var testGroup = document.getElementById('db-test-group');
+                            if (testGroup) testGroup.classList.remove('has-error');
+                        }
+                    })
+                    .catch(function() {
+                        dbTestPassed = false;
+                        result.className = 'db-test-result error';
+                        result.textContent = '✗ Fehler beim Testen der Verbindung.';
+                    })
+                    .finally(function() {
+                        btn.disabled = false;
+                        btn.classList.remove('testing');
+                        btn.textContent = 'Verbindung testen';
+                    });
+            };
+
+            // ─── Custom branch toggle ───
+            <?php if ($devMode): ?>
+                    (function() {
+                        var customInput = document.getElementById('custom_branch_input');
+                        var customField = document.getElementById('custom_branch_field');
+                        document.querySelectorAll('input[name="git_branch"]').forEach(function(radio) {
+                            radio.addEventListener('change', function() {
+                                if (this.value === 'custom') {
+                                    customInput.classList.add('active');
+                                    customField.focus();
+                                } else {
+                                    customInput.classList.remove('active');
+                                }
+                            });
+                        });
+                    })();
+            <?php endif; ?>
+
+            // ─── Form submission ───
+            form.addEventListener('submit', function(e) {
+                if (!validateStep(currentStep)) {
+                    e.preventDefault();
+                    return;
+                }
+                var btn = document.getElementById('submit-btn');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('submitting');
+                    btn.textContent = 'Setup wird durchgeführt...';
+                }
+            });
+
+            // ─── Initialize ───
+            updateProgress(0);
+
+            // Clean up initial-reveal class after animation
+            setTimeout(function() {
+                var initial = document.querySelector('.initial-reveal');
+                if (initial) initial.classList.remove('initial-reveal');
+            }, 800);
+
+        })();
     </script>
 </body>
 
