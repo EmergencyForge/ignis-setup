@@ -2083,7 +2083,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                     <div class="info-box">
                         <strong>Discord Applikation benötigt</strong>
                         Für die Discord-Integration muss eine Discord-Applikation erstellt werden. Eine detaillierte Anleitung finden Sie hier:
-                        <a href="https://emergencyforge.de/wiki.html#discord-app-erstellen" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
+                        <a href="https://emergencyforge.de/wiki/discord-app-erstellen" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
                     </div>
 
                     <div class="form-group">
