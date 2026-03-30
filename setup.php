@@ -103,108 +103,148 @@ if (isset($_GET['force_delete']) && $_GET['force_delete'] === 'confirm') {
     }
 }
 
-if (isset($_GET['composer_confirmed']) && $_GET['composer_confirmed'] === '1') {
-    $setupFile = __FILE__;
-    @unlink($setupFile);
-    header('Location: index.php');
-    exit;
-}
-
 $errors = [];
 $success = [];
-$canProceed = $phpVersionOk && $gitAvailable;
+// Git is only required for main/custom branches (dev mode), not for release ZIPs
+$canProceed = $phpVersionOk;
 
 if (!$phpVersionOk) {
     $errors[] = "PHP Version {$phpVersion} ist zu alt. Mindestens PHP {$requiredPhpVersion} wird benötigt!";
     logError("PHP Version Check fehlgeschlagen: {$phpVersion} < {$requiredPhpVersion}");
 }
 
-if (!$gitAvailable) {
-    $errors[] = "Git ist nicht verfügbar. Git wird für das Setup benötigt!";
-    logError("Git ist nicht verfügbar auf diesem System");
-}
+$isAjaxSetup = ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_SERVER['HTTP_X_SETUP_AJAX']));
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['action'])) {
 
-    $gitOutput = [];
-    $gitReturnVar = 0;
     $gitBranch = $_POST['git_branch'] ?? 'release';
     $customBranch = trim($_POST['custom_branch'] ?? '');
+    $repoOwner = 'EmergencyForge';
+    $repoName = 'intraRP';
 
-    exec('git --version 2>&1', $gitOutput, $gitReturnVar);
+    if ($gitBranch === 'release') {
+        // Download latest release ZIP (includes composer dependencies)
+        $apiUrl = "https://api.github.com/repos/{$repoOwner}/{$repoName}/releases/latest";
+        $context = stream_context_create(['http' => [
+            'header' => "User-Agent: intraRP-Setup\r\n",
+            'timeout' => 30,
+        ]]);
 
-    if ($gitReturnVar === 0) {
-        if (!is_dir('.git')) {
-            $gitOutput = [];
-            $repoUrl = 'https://github.com/EmergencyForge/intraRP.git';
+        $releaseJson = @file_get_contents($apiUrl, false, $context);
 
-            exec('git init 2>&1', $gitOutput, $gitReturnVar);
+        if ($releaseJson === false) {
+            $errors[] = 'Konnte Release-Informationen nicht von GitHub abrufen.';
+            logError('GitHub API Fehler: Konnte ' . $apiUrl . ' nicht erreichen');
+        } else {
+            $release = json_decode($releaseJson, true);
+            $tagName = $release['tag_name'] ?? null;
+            $zipAsset = null;
 
-            if ($gitReturnVar === 0) {
-                exec("git remote add origin {$repoUrl} 2>&1", $gitOutput, $gitReturnVar);
-
-                if ($gitBranch === 'custom' && !empty($customBranch)) {
-                    exec("git fetch origin {$customBranch} 2>&1", $gitOutput, $gitReturnVar);
-                    exec("git checkout -b {$customBranch} origin/{$customBranch} 2>&1", $gitOutput, $gitReturnVar);
-
-                    if ($gitReturnVar === 0) {
-                        exec("git reset --hard origin/{$customBranch} 2>&1", $gitOutput, $gitReturnVar);
-                        $success[] = "Repository initialisiert (Custom Branch: {$customBranch})";
-                    }
-                } elseif ($gitBranch === 'main') {
-                    exec('git fetch origin main 2>&1', $gitOutput, $gitReturnVar);
-                    exec('git checkout -b main origin/main 2>&1', $gitOutput, $gitReturnVar);
-
-                    if ($gitReturnVar === 0) {
-                        exec('git reset --hard origin/main 2>&1', $gitOutput, $gitReturnVar);
-                        $success[] = 'Repository initialisiert (Branch: main - experimentell)';
-                    }
-                } else {
-                    exec('git fetch --tags origin 2>&1', $gitOutput, $gitReturnVar);
-                    exec('git describe --tags `git rev-list --tags --max-count=1` 2>&1', $latestTag, $gitReturnVar);
-
-                    if ($gitReturnVar === 0 && !empty($latestTag[0])) {
-                        exec("git checkout -b release {$latestTag[0]} 2>&1", $gitOutput, $gitReturnVar);
-                        exec("git reset --hard {$latestTag[0]} 2>&1", $gitOutput, $gitReturnVar);
-                        $success[] = 'Repository initialisiert (Letzter Release: ' . $latestTag[0] . ')';
-                    } else {
-                        $errors[] = 'Konnte letzten Release-Tag nicht ermitteln.';
+            // Find the intraRP ZIP asset in the release
+            if (!empty($release['assets'])) {
+                foreach ($release['assets'] as $asset) {
+                    if (str_starts_with($asset['name'], 'intraRP-') && str_ends_with($asset['name'], '.zip')) {
+                        $zipAsset = $asset;
+                        break;
                     }
                 }
             }
 
-            if ($gitReturnVar !== 0 && empty($success)) {
-                $errors[] = 'Git Fehler: ' . implode('<br>', $gitOutput);
-                logError('Git Init/Clone Fehler: ' . implode(' | ', $gitOutput));
+            if ($zipAsset === null) {
+                $errors[] = 'Kein Release-ZIP in der neuesten Version gefunden.';
+                logError('Kein intraRP-*.zip Asset im Release ' . ($tagName ?? 'unbekannt'));
+            } else {
+                $zipUrl = $zipAsset['browser_download_url'];
+                $zipPath = sys_get_temp_dir() . '/' . $zipAsset['name'];
+
+                // Download the ZIP
+                $zipContext = stream_context_create(['http' => [
+                    'header' => "User-Agent: intraRP-Setup\r\n",
+                    'timeout' => 120,
+                ]]);
+                $zipData = @file_get_contents($zipUrl, false, $zipContext);
+
+                if ($zipData === false) {
+                    $errors[] = 'Fehler beim Herunterladen des Release-ZIP.';
+                    logError('Download fehlgeschlagen: ' . $zipUrl);
+                } else {
+                    file_put_contents($zipPath, $zipData);
+
+                    $zip = new ZipArchive();
+                    if ($zip->open($zipPath) === true) {
+                        // Extract to current directory
+                        $extractDir = dirname(__FILE__);
+                        $zip->extractTo($extractDir);
+                        $zip->close();
+                        @unlink($zipPath);
+                        $success[] = 'Release ' . htmlspecialchars($tagName) . ' erfolgreich installiert.';
+                    } else {
+                        $errors[] = 'Fehler beim Entpacken des Release-ZIP.';
+                        logError('ZIP Entpacken fehlgeschlagen: ' . $zipPath);
+                        @unlink($zipPath);
+                    }
+                }
             }
+        }
+    } else {
+        // Main or custom branch — requires Git
+        if (!$gitAvailable) {
+            $errors[] = 'Git ist nicht verfügbar. Git wird für Branch-basierte Installation benötigt!';
+            logError('Git ist nicht verfügbar auf diesem System');
         } else {
             $gitOutput = [];
+            $gitReturnVar = 0;
+            $repoUrl = "https://github.com/{$repoOwner}/{$repoName}.git";
 
-            if ($gitBranch === 'custom' && !empty($customBranch)) {
-                exec("git checkout {$customBranch} 2>&1", $gitOutput, $gitReturnVar);
-                exec("git pull origin {$customBranch} 2>&1", $gitOutput, $gitReturnVar);
-                $success[] = "Git Pull erfolgreich (Custom Branch: {$customBranch})";
-            } elseif ($gitBranch === 'main') {
-                exec('git checkout main 2>&1', $gitOutput, $gitReturnVar);
-                exec('git pull origin main 2>&1', $gitOutput, $gitReturnVar);
-                $success[] = 'Git Pull erfolgreich (Branch: main - experimentell): ' . implode('<br>', $gitOutput);
-            } else {
-                exec('git fetch --tags 2>&1', $gitOutput, $gitReturnVar);
-                exec('git describe --tags `git rev-list --tags --max-count=1` 2>&1', $latestTag, $gitReturnVar);
-                if ($gitReturnVar === 0 && !empty($latestTag[0])) {
-                    exec("git checkout {$latestTag[0]} 2>&1", $gitOutput, $gitReturnVar);
-                    $success[] = 'Zum letzten Release gewechselt: ' . $latestTag[0];
-                } else {
-                    $errors[] = 'Konnte letzten Release nicht ermitteln.';
+            if (!is_dir('.git')) {
+                exec('git init 2>&1', $gitOutput, $gitReturnVar);
+
+                if ($gitReturnVar === 0) {
+                    exec("git remote add origin {$repoUrl} 2>&1", $gitOutput, $gitReturnVar);
+
+                    if ($gitBranch === 'custom' && !empty($customBranch)) {
+                        exec("git fetch origin {$customBranch} 2>&1", $gitOutput, $gitReturnVar);
+                        exec("git checkout -b {$customBranch} origin/{$customBranch} 2>&1", $gitOutput, $gitReturnVar);
+                        if ($gitReturnVar === 0) {
+                            exec("git reset --hard origin/{$customBranch} 2>&1", $gitOutput, $gitReturnVar);
+                            $success[] = "Repository initialisiert (Custom Branch: {$customBranch})";
+                        }
+                    } else {
+                        exec('git fetch origin main 2>&1', $gitOutput, $gitReturnVar);
+                        exec('git checkout -b main origin/main 2>&1', $gitOutput, $gitReturnVar);
+                        if ($gitReturnVar === 0) {
+                            exec('git reset --hard origin/main 2>&1', $gitOutput, $gitReturnVar);
+                            $success[] = 'Repository initialisiert (Branch: main - experimentell)';
+                        }
+                    }
                 }
-            }
 
-            if ($gitReturnVar !== 0) {
-                $errors[] = 'Git Pull/Checkout Fehler: ' . implode('<br>', $gitOutput);
-                logError('Git Pull/Checkout Fehler: ' . implode(' | ', $gitOutput));
+                if ($gitReturnVar !== 0 && empty($success)) {
+                    $errors[] = 'Git Fehler: ' . implode('<br>', $gitOutput);
+                    logError('Git Init/Clone Fehler: ' . implode(' | ', $gitOutput));
+                }
+            } else {
+                $gitOutput = [];
+
+                if ($gitBranch === 'custom' && !empty($customBranch)) {
+                    exec("git checkout {$customBranch} 2>&1", $gitOutput, $gitReturnVar);
+                    exec("git pull origin {$customBranch} 2>&1", $gitOutput, $gitReturnVar);
+                    $success[] = "Git Pull erfolgreich (Custom Branch: {$customBranch})";
+                } else {
+                    exec('git checkout main 2>&1', $gitOutput, $gitReturnVar);
+                    exec('git pull origin main 2>&1', $gitOutput, $gitReturnVar);
+                    $success[] = 'Git Pull erfolgreich (Branch: main)';
+                }
+
+                if ($gitReturnVar !== 0) {
+                    $errors[] = 'Git Pull/Checkout Fehler: ' . implode('<br>', $gitOutput);
+                    logError('Git Pull/Checkout Fehler: ' . implode(' | ', $gitOutput));
+                }
             }
         }
     }
+
+    $needsComposer = ($gitBranch === 'main' || $gitBranch === 'custom');
 
     $envConfig = [
         'DB_HOST' => sanitizeEnvValue($_POST['db_host'] ?? 'localhost'),
@@ -249,112 +289,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
         if (file_put_contents('.env', $envContent)) {
             $success[] = '.env Datei erfolgreich erstellt!';
 
-            $composerOutput = [];
-            $composerReturnVar = 0;
-            $composerFailed = false;
-
-            exec('composer --version 2>&1', $composerOutput, $composerReturnVar);
-
-            if ($composerReturnVar === 0) {
-                $composerOutput = [];
-                exec('composer install --no-dev --optimize-autoloader 2>&1', $composerOutput, $composerReturnVar);
-
-                if ($composerReturnVar === 0) {
-                    $success[] = 'Composer Abhängigkeiten erfolgreich installiert!';
-                } else {
-                    $composerFailed = true;
-                    $success[] = 'Composer ist verfügbar, aber Installation fehlgeschlagen. Bitte führen Sie "composer install" manuell aus.';
-                    logError('Composer Install Fehler: ' . implode(' | ', $composerOutput));
-                }
-            } else {
-                $composerFailed = true;
-                $success[] = 'Composer ist nicht verfügbar. Bitte führen Sie "composer install" manuell aus, bevor Sie das System nutzen.';
-            }
-
             $setupFile = __FILE__;
 
             if (empty($errors)) {
-                if ($composerFailed) {
-                    // Composer Warnung anzeigen
-                    echo '<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup - Composer Warnung</title>
-    <style>
-        :root { --color-primary: #d10000; --color-primary-hover: #a00000; --color-warning: #e65100; }
-        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: #2b2d42; padding: 20px; min-height: 100vh; }
-        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .warning { color: var(--color-warning); font-size: 1.5em; margin-bottom: 20px; text-align: center; font-weight: 600; }
-        .message { margin: 20px 0; line-height: 1.6; }
-        .message p + p { margin-top: 15px; }
-        .code-box { background: #f5f5f5; padding: 15px; border-radius: 6px; border-left: 4px solid var(--color-warning); margin: 20px 0; font-family: monospace; }
-        .buttons { display: flex; gap: 10px; margin-top: 30px; }
-        .btn { flex: 1; padding: 15px; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; font-weight: 600; transition: all 0.3s; }
-        .btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-        .btn-primary { background: var(--color-primary); color: white; }
-        .btn-primary:hover { background: var(--color-primary-hover); }
-        .btn-secondary { background: #666; color: white; }
-        .btn-secondary:hover { background: #555; }
-    </style>
-</head>
-<body>
-    <main class="container" role="alert">
-        <div class="warning">Composer-Warnung</div>
-        <div class="message">
-            <p><strong>Die Composer-Abhängigkeiten konnten nicht automatisch installiert werden.</strong></p>
-            <p>Das System benötigt Composer-Pakete, um ordnungsgemäß zu funktionieren. Bitte führen Sie folgenden Befehl manuell aus:</p>
-            <div class="code-box">composer install --no-dev --optimize-autoloader</div>
-            <p><strong>Wichtig:</strong> Das System wird erst nach der Installation der Composer-Abhängigkeiten vollständig funktionieren.</p>
-        </div>
-        <div class="buttons">
-            <form method="GET" action="" style="flex: 1;">
-                <input type="hidden" name="composer_confirmed" value="1">
-                <button type="submit" class="btn btn-primary">Verstanden, fortfahren</button>
-            </form>
-            <button onclick="window.location.reload();" class="btn btn-secondary">Zurück zum Setup</button>
-        </div>
-    </main>
-</body>
-</html>';
+                @unlink($setupFile);
+
+                if ($isAjaxSetup) {
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => true,
+                        'needsComposer' => $needsComposer,
+                        'messages' => $success,
+                    ]);
                     exit;
                 }
 
-                header('refresh:3;url=index.php');
-
-                echo '<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup erfolgreich</title>
-    <style>
-        :root { --color-primary: #d10000; --color-success: #2e7d32; }
-        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: #2b2d42; padding: 20px; min-height: 100vh; }
-        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
-        .success { color: var(--color-success); font-size: 1.5em; margin-bottom: 20px; font-weight: 600; }
-        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--color-primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-    <main class="container" role="status" aria-live="polite">
-        <div class="success">Setup erfolgreich abgeschlossen!</div>
-        <div class="spinner" aria-hidden="true"></div>
-        <p>Sie werden in Kürze zum Admin-Panel weitergeleitet...</p>
-        <p><small>setup.php wird automatisch gelöscht.</small></p>
-    </main>
-</body>
-</html>';
-
-                @unlink($setupFile);
+                // Fallback for non-JS
+                header('Location: index.php');
                 exit;
             }
         } else {
             $errors[] = 'Fehler beim Schreiben der .env Datei. Prüfen Sie die Schreibrechte!';
             logError('Fehler beim Schreiben der .env Datei - Schreibrechte prüfen');
         }
+    }
+
+    // Return errors as JSON for AJAX requests
+    if ($isAjaxSetup && !empty($errors)) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'errors' => $errors]);
+        exit;
     }
 }
 
@@ -1141,6 +1105,187 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
             margin-top: var(--space-sm);
             color: var(--color-text-muted);
             text-align: center;
+        }
+
+        /* ═══ Progress modal ═══ */
+
+        .setup-modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-lg);
+            animation: backdropIn 0.3s ease both;
+        }
+
+        .setup-modal-backdrop.visible {
+            display: flex;
+        }
+
+        @keyframes backdropIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+
+        .setup-modal {
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xl);
+            padding: var(--space-xl) var(--space-2xl);
+            max-width: 440px;
+            width: 100%;
+            animation: modalIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+            animation-delay: 0.1s;
+        }
+
+        @keyframes modalIn {
+            from { opacity: 0; transform: translateY(16px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .setup-modal-title {
+            font-size: 1.2em;
+            font-weight: 800;
+            margin-bottom: var(--space-lg);
+            color: var(--color-text);
+        }
+
+        .setup-modal-steps {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }
+
+        .setup-modal-step {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            font-size: 0.92em;
+            color: var(--color-text-muted);
+            transition: color 0.3s;
+        }
+
+        .setup-modal-step.active {
+            color: var(--color-text);
+            font-weight: 600;
+        }
+
+        .setup-modal-step.done {
+            color: var(--color-success);
+        }
+
+        .setup-modal-step.error {
+            color: var(--color-error);
+            font-weight: 600;
+        }
+
+        .step-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+            font-weight: 700;
+            flex-shrink: 0;
+            border: 2px solid var(--color-border);
+            color: var(--color-text-muted);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .setup-modal-step.active .step-icon {
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+            animation: stepPulse 1.2s ease-in-out infinite;
+        }
+
+        .setup-modal-step.done .step-icon {
+            border-color: var(--color-success-border);
+            background: var(--color-success-border);
+            color: white;
+            animation: none;
+            transform: scale(1);
+        }
+
+        .setup-modal-step.error .step-icon {
+            border-color: var(--color-error-border);
+            background: var(--color-error-border);
+            color: white;
+            animation: none;
+        }
+
+        @keyframes stepPulse {
+            0%, 100% { transform: scale(1); }
+            50%      { transform: scale(1.1); }
+        }
+
+        .setup-modal-error {
+            margin-top: var(--space-lg);
+            padding: var(--space-md);
+            background: var(--color-error-bg);
+            border: 1.5px solid var(--color-error-border);
+            border-radius: var(--radius-md);
+            color: var(--color-error);
+            font-size: 0.88em;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .setup-modal-error.visible {
+            display: block;
+            animation: fieldReveal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .setup-modal-composer {
+            margin-top: var(--space-lg);
+            padding: var(--space-md);
+            background: var(--color-warning-bg);
+            border: 1.5px solid var(--color-warning);
+            border-radius: var(--radius-md);
+            color: var(--color-text);
+            font-size: 0.88em;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .setup-modal-composer.visible {
+            display: block;
+            animation: fieldReveal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .setup-modal-composer code {
+            display: block;
+            margin-top: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
+            background: rgba(128, 128, 128, 0.1);
+            border-radius: var(--radius-sm);
+            font-family: monospace;
+            font-size: 0.95em;
+        }
+
+        .setup-modal-action {
+            margin-top: var(--space-lg);
+            display: none;
+        }
+
+        .setup-modal-action.visible {
+            display: block;
+            animation: fieldReveal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .setup-modal-action .btn {
+            width: 100%;
+        }
+
+        @media (max-width: 480px) {
+            .setup-modal {
+                padding: var(--space-lg);
+            }
         }
 
         /* ═══ Footer ═══ */
@@ -1951,18 +2096,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                         </div>
 
                         <div class="requirement-box <?php echo $gitAvailable ? 'success' : 'error'; ?>">
-                            <span class="requirement-icon" aria-hidden="true"><?php echo $gitAvailable ? '✓' : '✗'; ?></span>
+                            <span class="requirement-icon" aria-hidden="true"><?php echo $gitAvailable ? '✓' : '—'; ?></span>
                             <div class="requirement-detail">
                                 <strong class="requirement-title">Git</strong>
                                 <div class="requirement-status">
                                     <?php if ($gitAvailable): ?>
                                         <strong>Verfügbar</strong>
-                                        <div class="requirement-sub">Git ist installiert und funktionsfähig</div>
+                                        <div class="requirement-sub">Nur für Main/Custom Branch benötigt</div>
                                     <?php else: ?>
-                                        <div class="requirement-fix-inner">
-                                            <strong>Nicht verfügbar!</strong><br>
-                                            <small>Git muss auf dem Server installiert sein</small>
-                                        </div>
+                                        <strong>Nicht verfügbar</strong>
+                                        <div class="requirement-sub">Für Release-Installation nicht erforderlich</div>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -1990,7 +2133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                                         <strong>Letzter Release</strong>
                                         <span class="warning-badge warning-badge--success">EMPFOHLEN</span>
                                     </div>
-                                    <small>Stabile Version - empfohlen für Produktivumgebungen</small>
+                                    <small>Stabile Version als ZIP herunterladen - empfohlen für Produktivumgebungen</small>
                                 </span>
                             </label>
                             <label>
@@ -2000,7 +2143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                                         <strong>Main Branch</strong>
                                         <span class="warning-badge">EXPERIMENTELL</span>
                                     </div>
-                                    <small>Neueste Entwicklungsversion - kann instabil sein</small>
+                                    <small>Neueste Entwicklungsversion via Git - kann instabil sein (Git + Composer erforderlich)</small>
                                 </span>
                             </label>
                             <?php if ($devMode): ?>
@@ -2011,7 +2154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                                             <strong>Custom Branch</strong>
                                             <span class="warning-badge warning-badge--dev">DEV</span>
                                         </div>
-                                        <small>Eigenen Branch angeben · für Entwicklung</small>
+                                        <small>Eigenen Branch angeben via Git · für Entwicklung (Git + Composer erforderlich)</small>
                                     </span>
                                 </label>
                             <?php endif; ?>
@@ -2139,6 +2282,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                 </section>
 
             </form>
+        </div>
+
+        <!-- Progress modal -->
+        <div class="setup-modal-backdrop" id="setup-modal" role="dialog" aria-modal="true" aria-label="Setup-Fortschritt">
+            <div class="setup-modal">
+                <div class="setup-modal-title" id="modal-title">Setup wird durchgeführt...</div>
+                <ul class="setup-modal-steps">
+                    <li class="setup-modal-step" data-modal-step="connect">
+                        <span class="step-icon">1</span>
+                        <span>Verbindung zu GitHub...</span>
+                    </li>
+                    <li class="setup-modal-step" data-modal-step="download">
+                        <span class="step-icon">2</span>
+                        <span id="modal-step-download">Release wird heruntergeladen...</span>
+                    </li>
+                    <li class="setup-modal-step" data-modal-step="install">
+                        <span class="step-icon">3</span>
+                        <span id="modal-step-install">Dateien werden installiert...</span>
+                    </li>
+                    <li class="setup-modal-step" data-modal-step="config">
+                        <span class="step-icon">4</span>
+                        <span>Konfiguration wird erstellt...</span>
+                    </li>
+                    <li class="setup-modal-step" data-modal-step="done">
+                        <span class="step-icon">5</span>
+                        <span>Abschluss</span>
+                    </li>
+                </ul>
+                <div class="setup-modal-error" id="modal-error" role="alert"></div>
+                <div class="setup-modal-composer" id="modal-composer">
+                    <strong>Composer erforderlich</strong>
+                    <p>Bitte führen Sie folgenden Befehl manuell aus:</p>
+                    <code>composer install --no-dev --optimize-autoloader</code>
+                </div>
+                <div class="setup-modal-action" id="modal-action">
+                    <a href="index.php" class="btn">Weiter zum System</a>
+                </div>
+            </div>
         </div>
 
         <footer class="setup-footer">
@@ -2546,18 +2727,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed) {
                     })();
             <?php endif; ?>
 
-            // ─── Form submission ───
+            // ─── Form submission with progress modal ───
+            var modalSteps = document.querySelectorAll('.setup-modal-step');
+            var modalStepNames = ['connect', 'download', 'install', 'config', 'done'];
+            var modal = document.getElementById('setup-modal');
+            var modalTitle = document.getElementById('modal-title');
+            var modalError = document.getElementById('modal-error');
+            var modalComposer = document.getElementById('modal-composer');
+            var modalAction = document.getElementById('modal-action');
+
+            function setModalStep(name, state) {
+                var el = document.querySelector('[data-modal-step="' + name + '"]');
+                if (!el) return;
+                el.classList.remove('active', 'done', 'error');
+                if (state) el.classList.add(state);
+                if (state === 'done') {
+                    el.querySelector('.step-icon').textContent = '✓';
+                } else if (state === 'error') {
+                    el.querySelector('.step-icon').textContent = '✗';
+                }
+            }
+
+            function advanceModal(stepIndex, delay) {
+                return new Promise(function(resolve) {
+                    setTimeout(function() {
+                        if (stepIndex > 0) setModalStep(modalStepNames[stepIndex - 1], 'done');
+                        if (stepIndex < modalStepNames.length) setModalStep(modalStepNames[stepIndex], 'active');
+                        resolve();
+                    }, delay);
+                });
+            }
+
             form.addEventListener('submit', function(e) {
-                if (!validateStep(currentStep)) {
-                    e.preventDefault();
-                    return;
+                e.preventDefault();
+
+                if (!validateStep(currentStep)) return;
+
+                var branch = form.querySelector('input[name="git_branch"]:checked');
+                var isRelease = branch && branch.value === 'release';
+
+                // Customize step labels for branch mode
+                if (!isRelease) {
+                    document.getElementById('modal-step-download').textContent = 'Repository wird geklont...';
+                    document.getElementById('modal-step-install').textContent = 'Branch wird ausgecheckt...';
                 }
-                var btn = document.getElementById('submit-btn');
-                if (btn) {
-                    btn.disabled = true;
-                    btn.classList.add('submitting');
-                    btn.textContent = 'Setup wird durchgeführt...';
-                }
+
+                // Show modal
+                modal.classList.add('visible');
+                document.body.style.overflow = 'hidden';
+
+                var formData = new FormData(form);
+
+                // Start progress animation, then fire the request
+                advanceModal(0, 300)
+                    .then(function() { return advanceModal(1, 800); })
+                    .then(function() {
+                        // Fire the actual request
+                        return fetch(window.location.href, {
+                            method: 'POST',
+                            body: formData,
+                            headers: { 'X-Setup-Ajax': '1' }
+                        });
+                    })
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            return advanceModal(2, 400)
+                                .then(function() { return advanceModal(3, 600); })
+                                .then(function() { return advanceModal(4, 500); })
+                                .then(function() {
+                                    modalTitle.textContent = 'Setup abgeschlossen!';
+                                    if (data.needsComposer) {
+                                        modalComposer.classList.add('visible');
+                                    }
+                                    modalAction.classList.add('visible');
+                                });
+                        } else {
+                            // Show error
+                            setModalStep(modalStepNames[1], 'error');
+                            modalTitle.textContent = 'Setup fehlgeschlagen';
+                            modalError.innerHTML = (data.errors || ['Unbekannter Fehler']).join('<br>');
+                            modalError.classList.add('visible');
+                            modalAction.querySelector('.btn').textContent = 'Zurück';
+                            modalAction.querySelector('.btn').href = window.location.href;
+                            modalAction.classList.add('visible');
+                        }
+                    })
+                    .catch(function(err) {
+                        setModalStep(modalStepNames[0], 'error');
+                        modalTitle.textContent = 'Verbindungsfehler';
+                        modalError.textContent = 'Fehler bei der Kommunikation mit dem Server.';
+                        modalError.classList.add('visible');
+                        modalAction.querySelector('.btn').textContent = 'Zurück';
+                        modalAction.querySelector('.btn').href = window.location.href;
+                        modalAction.classList.add('visible');
+                    });
             });
 
             // ─── Initialize ───
