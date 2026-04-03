@@ -3155,7 +3155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                 var preview = document.getElementById('url-preview');
                 var redirectUri = document.getElementById('redirect-uri');
                 if (preview) preview.textContent = url || '—';
-                if (redirectUri) redirectUri.textContent = url ? url + 'auth/discord/callback' : '—';
+                if (redirectUri) redirectUri.textContent = url ? url + 'auth/discord/callback.php' : '—';
             }
 
             document.getElementById('domain').addEventListener('input', updateUrlPreview);
