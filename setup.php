@@ -1482,6 +1482,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             }
         }
 
+        /* ═══ Inline help ═══ */
+
+        .field-help {
+            margin-top: var(--space-xs);
+        }
+
+        .field-help summary {
+            font-size: 0.82em;
+            color: var(--color-info);
+            cursor: pointer;
+            font-weight: 600;
+            user-select: none;
+            list-style: none;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-xs);
+        }
+
+        .field-help summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .field-help summary::before {
+            content: '?';
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--color-info-bg);
+            color: var(--color-info);
+            font-size: 0.85em;
+            font-weight: 700;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+
+        .field-help[open] summary::before {
+            background: var(--color-info);
+            color: white;
+        }
+
+        .field-help .help-content {
+            margin-top: var(--space-sm);
+            padding: var(--space-md);
+            background: var(--color-info-bg);
+            border-radius: var(--radius-md);
+            font-size: 0.84em;
+            line-height: 1.6;
+            color: var(--color-text);
+            animation: fieldReveal 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .field-help .help-content strong {
+            color: var(--color-text);
+        }
+
+        .field-help .help-content code {
+            background: rgba(128, 128, 128, 0.1);
+            padding: 1px var(--space-xs);
+            border-radius: var(--radius-sm);
+            font-size: 0.92em;
+        }
+
+        .field-help .help-content ul {
+            margin: var(--space-xs) 0 0 var(--space-lg);
+        }
+
         /* ═══ Footer ═══ */
 
         .setup-footer {
@@ -2433,6 +2502,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                         <label for="db_host">Datenbank-Host *</label>
                         <input type="text" id="db_host" name="db_host" value="localhost" required autocomplete="off" aria-describedby="db_host-error">
                         <small>Host der Datenbank (meistens <code>localhost</code>)</small>
+                        <details class="field-help">
+                            <summary>Was ist der Datenbank-Host?</summary>
+                            <div class="help-content">
+                                Die Adresse des MySQL-Servers. Bei den meisten Hostern ist das <code>localhost</code>. Manche Anbieter nutzen eigene Adressen wie <code>db1234.hosting.de</code> — prüfen Sie die Angaben in Ihrem Hosting-Panel.
+                            </div>
+                        </details>
                         <span class="validation-msg" id="db_host-error" role="alert">Datenbank-Host ist erforderlich.</span>
                     </div>
 
@@ -2456,6 +2531,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                         <label for="db_name">Datenbank-Name *</label>
                         <input type="text" id="db_name" name="db_name" value="intrarp" required autocomplete="off" aria-describedby="db_name-error">
                         <small>Name der zu verwendenden Datenbank</small>
+                        <details class="field-help">
+                            <summary>Muss die Datenbank schon existieren?</summary>
+                            <div class="help-content">
+                                <strong>Ja</strong> — die Datenbank muss bereits auf dem Server angelegt sein, die Tabellen werden aber automatisch erstellt. Sie können eine neue Datenbank über phpMyAdmin oder das Hosting-Panel anlegen.
+                            </div>
+                        </details>
                         <span class="validation-msg" id="db_name-error" role="alert">Datenbank-Name ist erforderlich.</span>
                     </div>
 
@@ -2486,6 +2567,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                         <label for="base_path">Base Path *</label>
                         <input type="text" id="base_path" name="base_path" value="<?php echo htmlspecialchars($defaultBasePath); ?>" required aria-describedby="base_path-error">
                         <small>Der Pfad zur Installation (z.B. <code>/</code> für Root oder <code>/intrarp/</code> für Unterverzeichnis)</small>
+                        <details class="field-help">
+                            <summary>Welchen Pfad soll ich eintragen?</summary>
+                            <div class="help-content">
+                                Der Base Path hängt davon ab, wo die <code>setup.php</code> liegt:
+                                <ul>
+                                    <li>Direkt im Webroot → <code>/</code></li>
+                                    <li>Im Ordner <code>intrarp</code> → <code>/intrarp/</code></li>
+                                    <li>In einem Unterordner → <code>/ordner/unterordner/</code></li>
+                                </ul>
+                                Der Wert wurde automatisch erkannt. Ändern Sie ihn nur, wenn er nicht stimmt.
+                            </div>
+                        </details>
                         <span class="validation-msg" id="base_path-error" role="alert">Base Path ist erforderlich.</span>
                     </div>
 
@@ -2507,7 +2600,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                     <div class="info-box">
                         <strong>Discord Applikation benötigt</strong>
                         Für die Discord-Integration muss eine Discord-Applikation erstellt werden. Eine detaillierte Anleitung finden Sie hier:
-                        <a href="https://emergencyforge.de/wiki/discord-app-erstellen" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
+                        <a href="https://wiki.emergencyforge.de/erste-schritte/discord-app-erstellen/" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
                     </div>
 
                     <div class="info-box" id="redirect-uri-box" style="border-color: var(--color-success-border); color: var(--color-success);">
@@ -2520,6 +2613,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                         <label for="discord_client_id">Discord Client ID *</label>
                         <input type="text" id="discord_client_id" name="discord_client_id" required autocomplete="off" aria-describedby="discord_client_id-error">
                         <small>Client ID der Discord-Anwendung</small>
+                        <details class="field-help">
+                            <summary>Wo finde ich die Client ID?</summary>
+                            <div class="help-content">
+                                Öffnen Sie das <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" style="color: var(--color-info); font-weight: 600;">Discord Developer Portal</a>, wählen Sie Ihre Applikation und kopieren Sie die <strong>Application ID</strong> von der Übersichtsseite. Das ist eine lange Zahlenkette (z.B. <code>123456789012345678</code>).
+                            </div>
+                        </details>
                         <span class="validation-msg" id="discord_client_id-error" role="alert">Discord Client ID ist erforderlich.</span>
                     </div>
 
@@ -2530,6 +2629,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                             <button type="button" class="toggle-password" aria-pressed="false" aria-label="Passwort anzeigen" onclick="togglePassword('discord_client_secret', this)">Anzeigen</button>
                         </div>
                         <small>Client Secret der Discord-Anwendung</small>
+                        <details class="field-help">
+                            <summary>Wo finde ich das Client Secret?</summary>
+                            <div class="help-content">
+                                Im Discord Developer Portal unter Ihrer Applikation → <strong>OAuth2</strong> → <strong>Client Secret</strong>. Klicken Sie auf „Reset Secret" wenn Sie es noch nie kopiert haben. <strong>Achtung:</strong> Das Secret wird nur einmal angezeigt — speichern Sie es sicher ab.
+                            </div>
+                        </details>
                         <span class="validation-msg" id="discord_client_secret-error" role="alert">Discord Client Secret ist erforderlich.</span>
                     </div>
 

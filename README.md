@@ -8,7 +8,7 @@ Dieses Script lädt das aktuelle Release-ZIP herunter, konfiguriert die Datenban
 
 - PHP >= 8.1
 - MySQL-Datenbank
-- [Discord-Applikation](https://emergencyforge.de/wiki/discord-app-erstellen) (Client ID + Secret)
+- [Discord-Applikation](https://wiki.emergencyforge.de/erste-schritte/discord-app-erstellen/) (Client ID + Secret)
 - Git — nur für Main/Custom Branch (Entwicklermodus)
 
 ## Installation
