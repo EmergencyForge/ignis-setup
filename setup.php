@@ -21,6 +21,127 @@ $gitReturnVar = 0;
 exec('git --version 2>&1', $gitOutput, $gitReturnVar);
 $gitAvailable = ($gitReturnVar === 0);
 
+// Check PHP configuration limits for large ZIP downloads (~100MB+)
+function parsePhpSize($size) {
+    $size = trim($size);
+    $unit = strtolower(substr($size, -1));
+    $value = (int)$size;
+    return match($unit) {
+        'g' => $value * 1024,
+        'm' => $value,
+        'k' => $value / 1024,
+        default => $value / (1024 * 1024),
+    };
+}
+
+$phpLimits = [
+    'memory_limit' => ['current' => ini_get('memory_limit'), 'recommended' => 512, 'unit' => 'M'],
+    'max_execution_time' => ['current' => ini_get('max_execution_time'), 'recommended' => 300, 'unit' => 's'],
+    'upload_max_filesize' => ['current' => ini_get('upload_max_filesize'), 'recommended' => 256, 'unit' => 'M'],
+    'post_max_size' => ['current' => ini_get('post_max_size'), 'recommended' => 256, 'unit' => 'M'],
+];
+
+$phpLimitsOk = true;
+$phpLimitWarnings = [];
+foreach ($phpLimits as $key => $limit) {
+    if ($key === 'max_execution_time') {
+        $currentVal = (int)$limit['current'];
+        // 0 = unlimited = ok
+        $ok = ($currentVal === 0 || $currentVal >= $limit['recommended']);
+        $currentDisplay = $currentVal === 0 ? 'Unbegrenzt' : $currentVal . 's';
+    } else {
+        $currentVal = parsePhpSize($limit['current']);
+        // -1 = unlimited = ok
+        $ok = ($limit['current'] === '-1' || $currentVal >= $limit['recommended']);
+        $currentDisplay = $limit['current'] === '-1' ? 'Unbegrenzt' : $limit['current'];
+    }
+    $phpLimits[$key]['ok'] = $ok;
+    $phpLimits[$key]['display'] = $currentDisplay;
+    if (!$ok) {
+        $phpLimitsOk = false;
+        $phpLimitWarnings[] = "{$key}: {$currentDisplay} (empfohlen: {$limit['recommended']}{$limit['unit']})";
+    }
+}
+
+$curlAvailable = function_exists('curl_init');
+$allowUrlFopen = (bool)ini_get('allow_url_fopen');
+
+// Robust HTTP helper — uses cURL (streaming to disk) with file_get_contents fallback
+function httpGet($url, $saveTo = null, $timeout = 30) {
+    $headers = ['User-Agent: intraRP-Setup'];
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => $timeout,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+
+        if ($saveTo) {
+            // Stream directly to file — no memory spike
+            $fp = fopen($saveTo, 'wb');
+            if (!$fp) return ['ok' => false, 'error' => 'Konnte Zieldatei nicht erstellen: ' . $saveTo];
+            curl_setopt($ch, CURLOPT_FILE, $fp);
+        } else {
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        }
+
+        $result = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        unset($ch);
+
+        if ($saveTo) {
+            fclose($fp);
+            if ($httpCode >= 400 || !empty($curlError)) {
+                @unlink($saveTo);
+                return ['ok' => false, 'error' => $curlError ?: "HTTP {$httpCode}"];
+            }
+            return ['ok' => true];
+        }
+
+        if ($httpCode >= 400 || $result === false) {
+            return ['ok' => false, 'error' => $curlError ?: "HTTP {$httpCode}"];
+        }
+        return ['ok' => true, 'body' => $result];
+    }
+
+    // Fallback: file_get_contents
+    if (!ini_get('allow_url_fopen')) {
+        return ['ok' => false, 'error' => 'Weder cURL noch allow_url_fopen verfügbar.'];
+    }
+
+    $context = stream_context_create(['http' => [
+        'header'          => implode("\r\n", $headers),
+        'timeout'         => $timeout,
+        'follow_location' => true,
+        'max_redirects'   => 5,
+    ]]);
+
+    if ($saveTo) {
+        $source = @fopen($url, 'rb', false, $context);
+        if (!$source) return ['ok' => false, 'error' => 'Konnte URL nicht öffnen: ' . $url];
+        $dest = @fopen($saveTo, 'wb');
+        if (!$dest) { fclose($source); return ['ok' => false, 'error' => 'Konnte Zieldatei nicht erstellen.']; }
+        while (!feof($source)) {
+            fwrite($dest, fread($source, 8192));
+        }
+        fclose($source);
+        fclose($dest);
+        return ['ok' => true];
+    }
+
+    $result = @file_get_contents($url, false, $context);
+    if ($result === false) {
+        return ['ok' => false, 'error' => 'Verbindung fehlgeschlagen: ' . $url];
+    }
+    return ['ok' => true, 'body' => $result];
+}
+
 // Determine default values for BASE_PATH and DOMAIN
 $defaultDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '/');
@@ -106,7 +227,7 @@ if (isset($_GET['force_delete']) && $_GET['force_delete'] === 'confirm') {
 $errors = [];
 $success = [];
 // Git is only required for main/custom branches (dev mode), not for release ZIPs
-$canProceed = $phpVersionOk;
+$canProceed = $phpVersionOk && ($curlAvailable || $allowUrlFopen) && class_exists('ZipArchive');
 
 if (!$phpVersionOk) {
     $errors[] = "PHP Version {$phpVersion} ist zu alt. Mindestens PHP {$requiredPhpVersion} wird benötigt!";
@@ -122,66 +243,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
     $repoOwner = 'EmergencyForge';
     $repoName = 'intraRP';
 
+    // Temporarily raise limits for large downloads
+    @set_time_limit(300);
+    @ini_set('memory_limit', '512M');
+
     if ($gitBranch === 'release') {
-        // Download latest release ZIP (includes composer dependencies)
+        // Step 1: Fetch release info from GitHub API
         $apiUrl = "https://api.github.com/repos/{$repoOwner}/{$repoName}/releases/latest";
-        $context = stream_context_create(['http' => [
-            'header' => "User-Agent: intraRP-Setup\r\n",
-            'timeout' => 30,
-        ]]);
+        $apiResult = httpGet($apiUrl);
 
-        $releaseJson = @file_get_contents($apiUrl, false, $context);
-
-        if ($releaseJson === false) {
-            $errors[] = 'Konnte Release-Informationen nicht von GitHub abrufen.';
-            logError('GitHub API Fehler: Konnte ' . $apiUrl . ' nicht erreichen');
+        if (!$apiResult['ok']) {
+            $errors[] = 'Konnte Release-Informationen nicht von GitHub abrufen: ' . $apiResult['error'];
+            logError('GitHub API Fehler: ' . $apiResult['error']);
         } else {
-            $release = json_decode($releaseJson, true);
-            $tagName = $release['tag_name'] ?? null;
-            $zipAsset = null;
+            $release = json_decode($apiResult['body'], true);
 
-            // Find the intraRP ZIP asset in the release
-            if (!empty($release['assets'])) {
-                foreach ($release['assets'] as $asset) {
-                    if (str_starts_with($asset['name'], 'intraRP-') && str_ends_with($asset['name'], '.zip')) {
-                        $zipAsset = $asset;
-                        break;
+            if (!$release || empty($release['tag_name'])) {
+                $errors[] = 'Ungültige Antwort von der GitHub API.';
+                logError('GitHub API: Ungültiges JSON oder kein tag_name');
+            } else {
+                $tagName = $release['tag_name'];
+                $zipAsset = null;
+
+                // Find the intraRP ZIP asset in the release
+                if (!empty($release['assets'])) {
+                    foreach ($release['assets'] as $asset) {
+                        if (str_starts_with($asset['name'], 'intraRP-') && str_ends_with($asset['name'], '.zip')) {
+                            $zipAsset = $asset;
+                            break;
+                        }
                     }
                 }
-            }
 
-            if ($zipAsset === null) {
-                $errors[] = 'Kein Release-ZIP in der neuesten Version gefunden.';
-                logError('Kein intraRP-*.zip Asset im Release ' . ($tagName ?? 'unbekannt'));
-            } else {
-                $zipUrl = $zipAsset['browser_download_url'];
-                $zipPath = sys_get_temp_dir() . '/' . $zipAsset['name'];
-
-                // Download the ZIP
-                $zipContext = stream_context_create(['http' => [
-                    'header' => "User-Agent: intraRP-Setup\r\n",
-                    'timeout' => 120,
-                ]]);
-                $zipData = @file_get_contents($zipUrl, false, $zipContext);
-
-                if ($zipData === false) {
-                    $errors[] = 'Fehler beim Herunterladen des Release-ZIP.';
-                    logError('Download fehlgeschlagen: ' . $zipUrl);
+                if ($zipAsset === null) {
+                    $errors[] = 'Kein Release-ZIP (intraRP-*.zip) in Version ' . htmlspecialchars($tagName) . ' gefunden.';
+                    logError('Kein intraRP-*.zip Asset im Release ' . $tagName);
                 } else {
-                    file_put_contents($zipPath, $zipData);
+                    // Step 2: Download ZIP — streamed to temp file (not into memory)
+                    $zipUrl = $zipAsset['browser_download_url'];
+                    $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipAsset['name'];
 
-                    $zip = new ZipArchive();
-                    if ($zip->open($zipPath) === true) {
-                        // Extract to current directory
-                        $extractDir = dirname(__FILE__);
-                        $zip->extractTo($extractDir);
-                        $zip->close();
-                        @unlink($zipPath);
-                        $success[] = 'Release ' . htmlspecialchars($tagName) . ' erfolgreich installiert.';
+                    $dlResult = httpGet($zipUrl, $zipPath, 300);
+
+                    if (!$dlResult['ok']) {
+                        $errors[] = 'Fehler beim Herunterladen des Release-ZIP: ' . $dlResult['error'];
+                        logError('Download fehlgeschlagen: ' . $zipUrl . ' — ' . $dlResult['error']);
                     } else {
-                        $errors[] = 'Fehler beim Entpacken des Release-ZIP.';
-                        logError('ZIP Entpacken fehlgeschlagen: ' . $zipPath);
-                        @unlink($zipPath);
+                        // Verify file was actually downloaded
+                        if (!file_exists($zipPath) || filesize($zipPath) < 1000) {
+                            $errors[] = 'Download abgeschlossen, aber Datei ist leer oder unvollständig.';
+                            logError('ZIP-Datei leer/unvollständig: ' . $zipPath . ' (' . filesize($zipPath) . ' bytes)');
+                            @unlink($zipPath);
+                        } else {
+                            // Step 3: Extract ZIP
+                            $zip = new ZipArchive();
+                            $zipOpenResult = $zip->open($zipPath);
+                            if ($zipOpenResult === true) {
+                                $extractDir = dirname(__FILE__);
+                                $zip->extractTo($extractDir);
+                                $zip->close();
+                                @unlink($zipPath);
+                                $success[] = 'Release ' . htmlspecialchars($tagName) . ' erfolgreich installiert.';
+                            } else {
+                                $errors[] = 'Fehler beim Entpacken des Release-ZIP (Code: ' . $zipOpenResult . ').';
+                                logError('ZIP Entpacken fehlgeschlagen: ' . $zipPath . ' (Code: ' . $zipOpenResult . ')');
+                                @unlink($zipPath);
+                            }
+                        }
                     }
                 }
             }
@@ -868,12 +996,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
         }
 
         .requirement-box {
-            padding: var(--space-lg);
+            padding: var(--space-md);
             border-radius: var(--radius-md);
             display: flex;
-            align-items: center;
-            gap: var(--space-md);
+            align-items: flex-start;
+            gap: var(--space-sm);
             border: 1.5px solid transparent;
+            min-width: 0;
         }
 
         .requirement-box.success {
@@ -893,28 +1022,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
         }
 
         .requirement-icon {
-            font-size: 2.2em;
+            font-size: 1.4em;
             line-height: 1;
+            flex-shrink: 0;
         }
 
         .requirement-detail {
             flex: 1;
+            min-width: 0;
         }
 
         .requirement-title {
-            font-size: 1.15em;
+            font-size: 0.95em;
             font-weight: 700;
         }
 
         .requirement-status {
-            font-size: 0.95em;
-            margin-top: var(--space-xs);
+            font-size: 0.85em;
+            margin-top: 2px;
         }
 
         .requirement-sub {
-            font-size: 0.85em;
+            font-size: 0.8em;
             opacity: 0.75;
-            margin-top: var(--space-xs);
+            margin-top: 2px;
         }
 
         .requirement-fix {
@@ -930,9 +1061,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
         }
 
         .requirements-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: var(--space-md);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
             margin-bottom: var(--space-lg);
         }
 
@@ -957,10 +1088,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 
             body {
                 padding: var(--space-md);
-            }
-
-            .requirements-grid {
-                grid-template-columns: 1fr;
             }
 
             .setup-header {
@@ -1105,6 +1232,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             margin-top: var(--space-sm);
             color: var(--color-text-muted);
             text-align: center;
+        }
+
+        /* ═══ Summary / confirmation step ═══ */
+
+        .summary-grid {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+
+        .summary-section {
+            padding: var(--space-md) var(--space-lg);
+            border: 1.5px solid var(--color-border);
+            border-radius: var(--radius-md);
+            transition: border-color 0.2s, background 0.2s;
+            cursor: pointer;
+        }
+
+        .summary-section:hover {
+            border-color: var(--color-border-hover);
+            background: var(--color-surface-raised);
+        }
+
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-xs);
+        }
+
+        .summary-header strong {
+            font-size: 0.88em;
+            color: var(--color-text);
+        }
+
+        .summary-edit {
+            background: none;
+            border: none;
+            color: var(--color-primary);
+            font-size: 0.8em;
+            font-weight: 600;
+            cursor: pointer;
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius-sm);
+            transition: background 0.2s;
+        }
+
+        .summary-edit:hover {
+            background: var(--color-primary-subtle);
+        }
+
+        .summary-edit:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
+        .summary-value {
+            font-size: 0.88em;
+            color: var(--color-text-muted);
+            line-height: 1.5;
+        }
+
+        .summary-value code {
+            background: var(--color-input-bg);
+            padding: 1px var(--space-xs);
+            border-radius: var(--radius-sm);
+            font-size: 0.92em;
         }
 
         /* ═══ Progress modal ═══ */
@@ -2053,11 +2247,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                     </button>
                     <button type="button" class="wizard-dot" data-dot="3" disabled>
                         <span class="wizard-dot-icon">4</span>
-                        <span class="wizard-dot-label">Discord</span>
+                        <span class="wizard-dot-label">System</span>
                     </button>
                     <button type="button" class="wizard-dot" data-dot="4" disabled>
                         <span class="wizard-dot-icon">5</span>
-                        <span class="wizard-dot-label">System</span>
+                        <span class="wizard-dot-label">Discord</span>
+                    </button>
+                    <button type="button" class="wizard-dot" data-dot="5" disabled>
+                        <span class="wizard-dot-icon">6</span>
+                        <span class="wizard-dot-label">Übersicht</span>
                     </button>
                 </div>
             </nav>
@@ -2110,7 +2308,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                                 </div>
                             </div>
                         </div>
+
+                        <?php $dlMethodOk = $curlAvailable || $allowUrlFopen; ?>
+                        <div class="requirement-box <?php echo $dlMethodOk ? 'success' : 'error'; ?>">
+                            <span class="requirement-icon" aria-hidden="true"><?php echo $dlMethodOk ? '✓' : '✗'; ?></span>
+                            <div class="requirement-detail">
+                                <strong class="requirement-title">Download</strong>
+                                <div class="requirement-status">
+                                    <?php if ($curlAvailable): ?>
+                                        <strong>cURL verfügbar</strong>
+                                        <div class="requirement-sub">Optimale Methode für große Downloads</div>
+                                    <?php elseif ($allowUrlFopen): ?>
+                                        <strong>allow_url_fopen aktiv</strong>
+                                        <div class="requirement-sub">Funktioniert, cURL wäre performanter</div>
+                                    <?php else: ?>
+                                        <div class="requirement-fix-inner">
+                                            <strong>Keine Download-Methode verfügbar!</strong><br>
+                                            <small>cURL-Extension aktivieren oder allow_url_fopen=1 setzen</small>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <?php $zipExtOk = class_exists('ZipArchive'); ?>
+                        <div class="requirement-box <?php echo $zipExtOk ? 'success' : 'error'; ?>">
+                            <span class="requirement-icon" aria-hidden="true"><?php echo $zipExtOk ? '✓' : '✗'; ?></span>
+                            <div class="requirement-detail">
+                                <strong class="requirement-title">ZIP-Extension</strong>
+                                <div class="requirement-status">
+                                    <?php if ($zipExtOk): ?>
+                                        <strong>Verfügbar</strong>
+                                        <div class="requirement-sub">Zum Entpacken des Release-ZIP benötigt</div>
+                                    <?php else: ?>
+                                        <div class="requirement-fix-inner">
+                                            <strong>Nicht verfügbar!</strong><br>
+                                            <small>PHP-Extension <code>zip</code> muss aktiviert sein</small>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <?php if (!$phpLimitsOk): ?>
+                        <div class="info-box" style="border-color: var(--color-warning); color: var(--color-warning);">
+                            <strong>PHP-Konfiguration anpassen empfohlen</strong>
+                            Das Release-ZIP ist ca. 100 MB groß. Folgende PHP-Einstellungen sollten erhöht werden:
+                            <ul style="margin-top: var(--space-sm); margin-left: var(--space-lg);">
+                                <?php foreach ($phpLimitWarnings as $w): ?>
+                                    <li><code><?php echo $w; ?></code></li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <small style="display: block; margin-top: var(--space-sm); opacity: 0.8;">Anpassung in der <code>php.ini</code> oder <code>.htaccess</code> Ihres Hosters.</small>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="wizard-nav">
                         <button type="button" class="wizard-nav-btn wizard-nav-btn--next wizard-gate-shimmer" data-wizard-next <?php echo !$canProceed ? 'disabled' : ''; ?>>
@@ -2219,14 +2471,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                     </div>
                 </section>
 
-                <!-- Step 3: Discord-Integration -->
-                <section class="wizard-step" data-step="3" aria-label="Discord-Integration">
+                <!-- Step 3: System-Konfiguration -->
+                <section class="wizard-step" data-step="3" aria-label="System-Konfiguration">
+                    <h2 class="section-title">System-Konfiguration</h2>
+
+                    <div class="form-group">
+                        <label for="domain">Domain *</label>
+                        <input type="text" id="domain" name="domain" value="<?php echo htmlspecialchars($defaultDomain); ?>" required aria-describedby="domain-error">
+                        <small>Die Domain unter der das System erreichbar ist (ohne http/https)</small>
+                        <span class="validation-msg" id="domain-error" role="alert">Domain ist erforderlich.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="base_path">Base Path *</label>
+                        <input type="text" id="base_path" name="base_path" value="<?php echo htmlspecialchars($defaultBasePath); ?>" required aria-describedby="base_path-error">
+                        <small>Der Pfad zur Installation (z.B. <code>/</code> für Root oder <code>/intrarp/</code> für Unterverzeichnis)</small>
+                        <span class="validation-msg" id="base_path-error" role="alert">Base Path ist erforderlich.</span>
+                    </div>
+
+                    <div class="info-box" id="url-preview-box">
+                        <strong>Ihre System-URL</strong>
+                        <span id="url-preview" style="font-family: monospace; font-size: 1.05em; word-break: break-all;"></span>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--back" data-wizard-prev>Zurück</button>
+                        <button type="button" class="wizard-nav-btn wizard-nav-btn--next" data-wizard-next>Weiter</button>
+                    </div>
+                </section>
+
+                <!-- Step 4: Discord-Integration -->
+                <section class="wizard-step" data-step="4" aria-label="Discord-Integration">
                     <h2 class="section-title">Discord-Integration</h2>
 
                     <div class="info-box">
                         <strong>Discord Applikation benötigt</strong>
                         Für die Discord-Integration muss eine Discord-Applikation erstellt werden. Eine detaillierte Anleitung finden Sie hier:
                         <a href="https://emergencyforge.de/wiki/discord-app-erstellen" target="_blank" rel="noopener noreferrer">Discord-Applikation erstellen →</a>
+                    </div>
+
+                    <div class="info-box" id="redirect-uri-box" style="border-color: var(--color-success-border); color: var(--color-success);">
+                        <strong>Redirect-URI für die Discord-App</strong>
+                        Tragen Sie folgende URL als Redirect-URI in Ihrer Discord-Applikation ein:
+                        <code id="redirect-uri" style="display: block; margin-top: var(--space-sm); padding: var(--space-sm) var(--space-md); background: rgba(128,128,128,0.1); border-radius: var(--radius-sm); font-size: 0.95em; word-break: break-all; user-select: all; cursor: text;"></code>
                     </div>
 
                     <div class="form-group">
@@ -2252,27 +2539,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                     </div>
                 </section>
 
-                <!-- Step 4: System-Konfiguration + Submit -->
-                <section class="wizard-step" data-step="4" aria-label="System-Konfiguration">
-                    <h2 class="section-title">System-Konfiguration</h2>
+                <!-- Step 5: Übersicht + Submit -->
+                <section class="wizard-step" data-step="5" aria-label="Übersicht">
+                    <h2 class="section-title">Übersicht</h2>
 
-                    <div class="form-group">
-                        <label for="domain">Domain</label>
-                        <input type="text" id="domain" name="domain" value="<?php echo htmlspecialchars($defaultDomain); ?>" required aria-describedby="domain-error">
-                        <small>Die Domain unter der das System erreichbar ist (ohne http/https)</small>
-                        <span class="validation-msg" id="domain-error" role="alert">Domain ist erforderlich.</span>
-                    </div>
+                    <p style="color: var(--color-text-muted); margin-bottom: var(--space-lg); font-size: 0.92em;">Bitte überprüfen Sie Ihre Eingaben. Klicken Sie auf einen Abschnitt, um ihn zu bearbeiten.</p>
 
-                    <div class="form-group">
-                        <label for="base_path">Base Path</label>
-                        <input type="text" id="base_path" name="base_path" value="<?php echo htmlspecialchars($defaultBasePath); ?>" required aria-describedby="base_path-error">
-                        <small>Der Pfad zur Installation (z.B. <code>/</code> für Root oder <code>/intrarp/</code> für Unterverzeichnis)</small>
-                        <span class="validation-msg" id="base_path-error" role="alert">Base Path ist erforderlich.</span>
-                    </div>
+                    <div class="summary-grid" id="summary-grid">
+                        <div class="summary-section" data-jump="1">
+                            <div class="summary-header">
+                                <strong>Version</strong>
+                                <button type="button" class="summary-edit" aria-label="Version bearbeiten">Ändern</button>
+                            </div>
+                            <div class="summary-value" id="summary-git"></div>
+                        </div>
 
-                    <div class="info-box">
-                        <strong>Hinweis:</strong>
-                        Die hier eingegebenen Datenbank- und Discord-Credentials werden in der <code>/.env</code> Datei gespeichert und können später dort angepasst werden. Alle weiteren System-Einstellungen (z.B. System-Name, Farben, Server-Informationen) werden nach dem Setup über das Admin-Panel in der Datenbank konfiguriert.
+                        <div class="summary-section" data-jump="2">
+                            <div class="summary-header">
+                                <strong>Datenbank</strong>
+                                <button type="button" class="summary-edit" aria-label="Datenbank bearbeiten">Ändern</button>
+                            </div>
+                            <div class="summary-value" id="summary-db"></div>
+                        </div>
+
+                        <div class="summary-section" data-jump="3">
+                            <div class="summary-header">
+                                <strong>System</strong>
+                                <button type="button" class="summary-edit" aria-label="System bearbeiten">Ändern</button>
+                            </div>
+                            <div class="summary-value" id="summary-system"></div>
+                        </div>
+
+                        <div class="summary-section" data-jump="4">
+                            <div class="summary-header">
+                                <strong>Discord</strong>
+                                <button type="button" class="summary-edit" aria-label="Discord bearbeiten">Ändern</button>
+                            </div>
+                            <div class="summary-value" id="summary-discord"></div>
+                        </div>
                     </div>
 
                     <div class="wizard-nav">
@@ -2358,7 +2662,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             'use strict';
 
             // ─── Configuration ───
-            const TOTAL_STEPS = 5;
+            const TOTAL_STEPS = 6;
             const EXIT_DURATION = 220;
             const ENTER_DURATION = 380;
             const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2480,6 +2784,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                     newStep.classList.add('active');
                     currentStep = newIndex;
                     updateProgress(newIndex);
+                    if (newIndex === TOTAL_STEPS - 1) populateSummary();
+                    if (newIndex === 4) updateUrlPreview();
                     newStep.scrollIntoView({
                         block: 'nearest'
                     });
@@ -2510,6 +2816,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 
                     currentStep = newIndex;
                     updateProgress(newIndex);
+                    if (newIndex === TOTAL_STEPS - 1) populateSummary();
+                    if (newIndex === 4) updateUrlPreview();
 
                     // Scroll to top of wizard
                     document.querySelector('.wizard-progress').scrollIntoView({
@@ -2726,6 +3034,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                         });
                     })();
             <?php endif; ?>
+
+            // ─── Live URL preview + Redirect URI ───
+            function getSystemUrl() {
+                var domain = (document.getElementById('domain').value || '').trim();
+                var basePath = (document.getElementById('base_path').value || '/').trim();
+                if (!domain) return '';
+                if (!basePath.startsWith('/')) basePath = '/' + basePath;
+                if (!basePath.endsWith('/')) basePath += '/';
+                return 'https://' + domain + basePath;
+            }
+
+            function updateUrlPreview() {
+                var url = getSystemUrl();
+                var preview = document.getElementById('url-preview');
+                var redirectUri = document.getElementById('redirect-uri');
+                if (preview) preview.textContent = url || '—';
+                if (redirectUri) redirectUri.textContent = url ? url + 'auth/discord/callback' : '—';
+            }
+
+            document.getElementById('domain').addEventListener('input', updateUrlPreview);
+            document.getElementById('base_path').addEventListener('input', updateUrlPreview);
+            updateUrlPreview();
+
+            // ─── Summary / confirmation step ───
+            function populateSummary() {
+                var branch = form.querySelector('input[name="git_branch"]:checked');
+                var branchLabels = { release: 'Letzter Release (ZIP)', main: 'Main Branch', custom: 'Custom Branch' };
+                var branchText = branchLabels[branch ? branch.value : 'release'] || 'Release';
+                if (branch && branch.value === 'custom') {
+                    var custom = document.getElementById('custom_branch_field');
+                    if (custom && custom.value) branchText += ': ' + custom.value;
+                }
+                document.getElementById('summary-git').textContent = branchText;
+
+                var dbHost = document.getElementById('db_host').value || 'localhost';
+                var dbUser = document.getElementById('db_user').value || 'root';
+                var dbName = document.getElementById('db_name').value || 'intrarp';
+                document.getElementById('summary-db').innerHTML =
+                    '<code>' + dbHost + '</code> · Benutzer: <code>' + dbUser + '</code> · DB: <code>' + dbName + '</code>';
+
+                var url = getSystemUrl();
+                document.getElementById('summary-system').innerHTML =
+                    url ? '<code>' + url + '</code>' : '—';
+
+                var discordId = document.getElementById('discord_client_id').value;
+                var masked = discordId ? discordId.substring(0, 6) + '...' : '—';
+                document.getElementById('summary-discord').innerHTML =
+                    'Client ID: <code>' + masked + '</code>';
+            }
+
+            // Jump back to step when clicking summary section
+            document.querySelectorAll('.summary-section').forEach(function(section) {
+                section.addEventListener('click', function(e) {
+                    if (e.target.closest('.summary-edit') || e.target === section) {
+                        var target = parseInt(section.getAttribute('data-jump'));
+                        goToStep(target);
+                    }
+                });
+                section.querySelector('.summary-edit').addEventListener('click', function() {
+                    var target = parseInt(section.getAttribute('data-jump'));
+                    goToStep(target);
+                });
+            });
 
             // ─── Form submission with progress modal ───
             var modalSteps = document.querySelectorAll('.setup-modal-step');
