@@ -22,13 +22,11 @@ if (isset($_GET['debug'])) {
     ini_set('log_errors', '1');
 }
 
-// Session-Lifetime auf 4 h hochziehen, BEVOR start. Setup ist ein
-// Einmal-Install-Flow — User tippt Credentials, alt-tabt zur Discord-
-// Developer-Console, kommt 20 min später zurück. Mit dem PHP-Default von
-// 24 min war das Session-Cookie + der CSRF-Token oft schon weg, was sich
-// als „CSRF-Token ungültig"-Fehler beim Klick auf „Verbindung testen"
-// gezeigt hat. 4 h reicht selbst für Recherche-Pausen, ohne dass die
-// Session lange offen bleibt nachdem das Setup abgeschlossen ist.
+// Setup-Session lebt 4 h: deckt längere Recherche-Pausen zwischen den
+// Wizard-Schritten ab, ohne nach Abschluss noch lange offen zu sein.
+// `cookie_lifetime` wirkt clientseitig garantiert; `gc_maxlifetime` per
+// `ini_set` ist auf Shared-Hosting nicht immer respektiert — der
+// Token-Refresh weiter unten dient als Sicherheitsnetz für diesen Fall.
 $setupSessionLifetime = 4 * 60 * 60;
 ini_set('session.gc_maxlifetime', (string) $setupSessionLifetime);
 ini_set('session.cookie_lifetime', (string) $setupSessionLifetime);
@@ -135,10 +133,10 @@ function verifyCsrf(): bool
 }
 
 /**
- * Nach einem CSRF-Miss: einen frischen Token erzeugen und ihn in die
- * Failure-Response packen. Der Client kann den neuen Token übernehmen
- * und den Request transparent wiederholen — ohne den User mit einem
- * „Seite neu laden"-Hinweis zu nerven.
+ * Erzeugt einen neuen Session-CSRF-Token und gibt ihn zurück. Wird nach
+ * einem CSRF-Miss in den AJAX-Endpoints aufgerufen, damit der neue
+ * Wert in der Failure-Response mitgereicht und vom Client transparent
+ * übernommen werden kann (siehe `postWithCsrfRetry` im JS).
  */
 function freshCsrfToken(): string
 {
@@ -470,7 +468,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_
         echo json_encode([
             'success'    => false,
             'message'    => 'CSRF-Token ungültig. Seite neu laden.',
-            'csrf_token' => freshCsrfToken(),  // Client kann transparent retrien
+            'csrf_token' => freshCsrfToken(),
             'csrf_retry' => true,
         ]);
         exit;
@@ -526,7 +524,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_
         echo json_encode([
             'success'    => false,
             'message'    => 'CSRF-Token ungültig. Seite neu laden.',
-            'csrf_token' => freshCsrfToken(),  // Client kann transparent retrien
+            'csrf_token' => freshCsrfToken(),
             'csrf_retry' => true,
         ]);
         exit;
@@ -3485,17 +3483,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             const ENTER_DURATION = 380;
             const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             const DEV_MODE = window.location.search.includes('dev');
-            // Mutable: der Server rotiert den Token nach einem CSRF-Miss
-            // (z.B. wenn die Session zwischenzeitlich abgelaufen ist) und
-            // schickt den neuen Wert in `csrf_token` der Failure-Response.
-            // Wir übernehmen ihn dann transparent für den Folge-Request.
+            // CSRF_TOKEN ist mutable, damit `postWithCsrfRetry` einen
+            // vom Server frisch ausgegebenen Token übernehmen kann.
             let CSRF_TOKEN = <?php echo json_encode($csrfToken); ?>;
 
             /**
-             * POSTet eine FormData ans Setup-Skript und retried EINMAL,
-             * falls der Server signalisiert dass der CSRF-Token frisch
-             * regeneriert wurde. So sieht der User keinen „Seite neu
-             * laden"-Hinweis, wenn die Session nur kurz abgelaufen war.
+             * POSTet `formData` an das Setup-Skript. Erkennt eine
+             * Failure-Response mit `csrf_retry: true`, übernimmt den
+             * mitgelieferten neuen Token in `CSRF_TOKEN` und sendet den
+             * Request einmal nach. So bleibt der User-Flow nach einem
+             * abgelaufenen Session-Token unterbrechungsfrei.
              */
             async function postWithCsrfRetry(formData) {
                 formData.set('_token', CSRF_TOKEN);
