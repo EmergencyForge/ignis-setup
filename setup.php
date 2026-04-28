@@ -1,7 +1,7 @@
 <?php
 
 /**
- * intraRP Setup Script
+ * ignis Setup Script
  *
  * Lädt das Release-ZIP (oder cloned einen Branch), führt `composer install`
  * aus, schreibt die .env, lässt Phinx die DB-Migrations laufen und löscht
@@ -22,6 +22,16 @@ if (isset($_GET['debug'])) {
     ini_set('log_errors', '1');
 }
 
+// Session-Lifetime auf 4 h hochziehen, BEVOR start. Setup ist ein
+// Einmal-Install-Flow — User tippt Credentials, alt-tabt zur Discord-
+// Developer-Console, kommt 20 min später zurück. Mit dem PHP-Default von
+// 24 min war das Session-Cookie + der CSRF-Token oft schon weg, was sich
+// als „CSRF-Token ungültig"-Fehler beim Klick auf „Verbindung testen"
+// gezeigt hat. 4 h reicht selbst für Recherche-Pausen, ohne dass die
+// Session lange offen bleibt nachdem das Setup abgeschlossen ist.
+$setupSessionLifetime = 4 * 60 * 60;
+ini_set('session.gc_maxlifetime', (string) $setupSessionLifetime);
+ini_set('session.cookie_lifetime', (string) $setupSessionLifetime);
 session_start();
 
 // ── Exception Handler — styled error page, secrets sanitized ────────
@@ -122,6 +132,18 @@ function verifyCsrf(): bool
 {
     $sent = $_POST['_token'] ?? $_SERVER['HTTP_X_SETUP_TOKEN'] ?? '';
     return is_string($sent) && hash_equals($_SESSION['setup_csrf'] ?? '', $sent);
+}
+
+/**
+ * Nach einem CSRF-Miss: einen frischen Token erzeugen und ihn in die
+ * Failure-Response packen. Der Client kann den neuen Token übernehmen
+ * und den Request transparent wiederholen — ohne den User mit einem
+ * „Seite neu laden"-Hinweis zu nerven.
+ */
+function freshCsrfToken(): string
+{
+    $_SESSION['setup_csrf'] = bin2hex(random_bytes(32));
+    return $_SESSION['setup_csrf'];
 }
 
 // ── Basis-Systemchecks ───────────────────────────────────────────────
@@ -256,7 +278,7 @@ function hitRateLimit(int $max = 20): bool
 
 function httpGet(string $url, ?string $saveTo = null, int $timeout = 30, array $extraHeaders = []): array
 {
-    $headers = array_merge(['User-Agent: intraRP-Setup'], $extraHeaders);
+    $headers = array_merge(['User-Agent: ignis-Setup'], $extraHeaders);
 
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
@@ -445,7 +467,12 @@ function cleanupProgress(): void {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_db') {
     header('Content-Type: application/json');
     if (!verifyCsrf()) {
-        echo json_encode(['success' => false, 'message' => 'CSRF-Token ungültig. Seite neu laden.']);
+        echo json_encode([
+            'success'    => false,
+            'message'    => 'CSRF-Token ungültig. Seite neu laden.',
+            'csrf_token' => freshCsrfToken(),  // Client kann transparent retrien
+            'csrf_retry' => true,
+        ]);
         exit;
     }
     if (hitRateLimit()) {
@@ -496,7 +523,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_discord') {
     header('Content-Type: application/json');
     if (!verifyCsrf()) {
-        echo json_encode(['success' => false, 'message' => 'CSRF-Token ungültig. Seite neu laden.']);
+        echo json_encode([
+            'success'    => false,
+            'message'    => 'CSRF-Token ungültig. Seite neu laden.',
+            'csrf_token' => freshCsrfToken(),  // Client kann transparent retrien
+            'csrf_retry' => true,
+        ]);
         exit;
     }
     if (hitRateLimit()) {
@@ -530,7 +562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_
         CURLOPT_USERPWD        => $clientId . ':' . $clientSecret,
         CURLOPT_HTTPHEADER     => [
             'Content-Type: application/x-www-form-urlencoded',
-            'User-Agent: intraRP-Setup',
+            'User-Agent: ignis-Setup',
         ],
         CURLOPT_POSTFIELDS     => http_build_query([
             'grant_type' => 'client_credentials',
@@ -624,7 +656,7 @@ function fetchLatestRelease(string $repoOwner, string $repoName): array
             CURLOPT_NOBODY         => true,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER     => ['User-Agent: intraRP-Setup'],
+            CURLOPT_HTTPHEADER     => ['User-Agent: ignis-Setup'],
             CURLOPT_TIMEOUT        => 10,
         ]);
         curl_exec($ch);
@@ -633,8 +665,9 @@ function fetchLatestRelease(string $repoOwner, string $repoName): array
 
         if ($redirect && preg_match('~/releases/tag/([^/?#]+)~', $redirect, $m)) {
             $tag = $m[1];
-            // Asset-Name raten anhand der Konvention "intraRP-<tag>.zip"
-            $zipName = 'intraRP-' . ltrim($tag, 'v') . '.zip';
+            // Asset-Name raten anhand der Konvention "ignis-<tag>.zip"
+            // (Legacy-Fallback "intraRP-<tag>.zip" wird vom GitHub-Release parallel mitgeliefert.)
+            $zipName = 'ignis-' . ltrim($tag, 'v') . '.zip';
             $zipUrl  = "https://github.com/{$repoOwner}/{$repoName}/releases/download/{$tag}/{$zipName}";
             return [
                 'ok'     => true,
@@ -918,16 +951,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             } else {
                 $release = $rel['release'];
                 $tagName = $release['tag_name'];
+                // Asset-Preferenz: ignis-*.zip bevorzugen, Legacy intraRP-*.zip als Fallback.
                 $zipAsset = null;
                 foreach (($release['assets'] ?? []) as $asset) {
-                    if (str_starts_with((string) $asset['name'], 'intraRP-') && str_ends_with((string) $asset['name'], '.zip')) {
+                    $name = (string) ($asset['name'] ?? '');
+                    if (!str_ends_with($name, '.zip')) {
+                        continue;
+                    }
+                    if (str_starts_with($name, 'ignis-')) {
                         $zipAsset = $asset;
                         break;
+                    }
+                    if ($zipAsset === null && str_starts_with($name, 'intraRP-')) {
+                        $zipAsset = $asset;
                     }
                 }
 
                 if ($zipAsset === null) {
-                    $errors[] = 'Kein Release-ZIP (intraRP-*.zip) in Version ' . htmlspecialchars($tagName) . ' gefunden.';
+                    $errors[] = 'Kein Release-ZIP (ignis-*.zip oder intraRP-*.zip) in Version ' . htmlspecialchars($tagName) . ' gefunden.';
                 } else {
                     $zipUrl  = $zipAsset['browser_download_url'];
                     $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipAsset['name'];
@@ -1076,7 +1117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
         if (!$mig['ok']) {
             // Migrations-Fehler ist nicht immer ein Hard-Fail — AutoMigrator
             // fängt beim ersten Web-Request nach, aber wir warnen deutlich.
-            $warnings[] = 'Migrations konnten nicht automatisch laufen. intraRP versucht es beim ersten Request erneut. Details im Log.';
+            $warnings[] = 'Migrations konnten nicht automatisch laufen. ıgnıs versucht es beim ersten Request erneut. Details im Log.';
             setupLog('Phinx Output: ' . $migrateOutput);
         } else {
             $success[] = 'Datenbank-Migrations erfolgreich ausgeführt.';
@@ -1131,7 +1172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>intraRP Setup</title>
+    <title>ıgnıs Setup</title>
     <style>
         :root {
             --color-primary: #ff4d00;
@@ -1256,6 +1297,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             font-size: 1.2em;
             letter-spacing: -0.01em;
             font-weight: 600;
+        }
+
+        .setup-tagline {
+            font-size: 0.85em;
+            opacity: 0.8;
+            margin: 0;
+            margin-left: auto;
         }
 
         /* Content area — full width with horizontal padding */
@@ -2888,14 +2936,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 <body>
     <main class="container">
         <header class="setup-header">
-            <img src="https://web-assets.emergencyforge.de/images/defaultLogo.webp" alt="intraRP" class="setup-logo">
+            <img src="https://web-assets.emergencyforge.de/images/defaultLogo.webp" alt="ıgnıs" class="setup-logo">
+            <p class="setup-tagline"><em><strong>ıgnıs</strong></em>. Struktur für jeden Einsatz.</p>
         </header>
 
         <div class="content">
 
             <!-- WBB-style page title + thin progress bar -->
             <div class="page-title">
-                <h2>intraRP Installation</h2>
+                <h2>ıgnıs Installation</h2>
                 <div class="progress-thin">
                     <div class="progress-thin-fill" id="progress-thin-fill"></div>
                 </div>
@@ -3436,7 +3485,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             const ENTER_DURATION = 380;
             const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             const DEV_MODE = window.location.search.includes('dev');
-            const CSRF_TOKEN = <?php echo json_encode($csrfToken); ?>;
+            // Mutable: der Server rotiert den Token nach einem CSRF-Miss
+            // (z.B. wenn die Session zwischenzeitlich abgelaufen ist) und
+            // schickt den neuen Wert in `csrf_token` der Failure-Response.
+            // Wir übernehmen ihn dann transparent für den Folge-Request.
+            let CSRF_TOKEN = <?php echo json_encode($csrfToken); ?>;
+
+            /**
+             * POSTet eine FormData ans Setup-Skript und retried EINMAL,
+             * falls der Server signalisiert dass der CSRF-Token frisch
+             * regeneriert wurde. So sieht der User keinen „Seite neu
+             * laden"-Hinweis, wenn die Session nur kurz abgelaufen war.
+             */
+            async function postWithCsrfRetry(formData) {
+                formData.set('_token', CSRF_TOKEN);
+                let response = await fetch(window.location.href, { method: 'POST', body: formData });
+                let data = await response.json();
+                if (data && data.csrf_retry === true && data.csrf_token) {
+                    CSRF_TOKEN = data.csrf_token;
+                    formData.set('_token', CSRF_TOKEN);
+                    response = await fetch(window.location.href, { method: 'POST', body: formData });
+                    data = await response.json();
+                }
+                return data;
+            }
 
             // ─── DOM refs ───
             const steps = document.querySelectorAll('.wizard-step');
@@ -3688,20 +3760,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 
                 var formData = new FormData();
                 formData.append('action', 'test_db');
-                formData.append('_token', CSRF_TOKEN);
                 formData.append('db_host', host);
                 formData.append('db_port', port || '3306');
                 formData.append('db_user', user);
                 formData.append('db_pass', pass);
                 formData.append('db_name', name);
 
-                fetch(window.location.href, {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(function(r) {
-                        return r.json();
-                    })
+                postWithCsrfRetry(formData)
                     .then(function(data) {
                         dbTestPassed = data.success;
                         result.className = 'db-test-result ' + (data.success ? 'success' : 'error');
@@ -3746,15 +3811,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 
                 var formData = new FormData();
                 formData.append('action', 'test_discord');
-                formData.append('_token', CSRF_TOKEN);
                 formData.append('discord_client_id', clientId);
                 formData.append('discord_client_secret', secret);
 
-                fetch(window.location.href, {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(function(r) { return r.json(); })
+                postWithCsrfRetry(formData)
                     .then(function(data) {
                         discordTestPassed = data.success;
                         result.className = 'db-test-result ' + (data.success ? 'success' : 'error');
