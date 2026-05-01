@@ -117,6 +117,52 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
 
 $devMode = isset($_GET['dev']);
 
+// ── Re-Run-Schutz: Lockfile + .env-Detection ────────────────────────
+// Wenn das Setup schon einmal erfolgreich gelaufen ist, lehnen wir
+// jeden weiteren Aufruf ab — egal ob setup.php noch existiert (z.B.
+// weil unlink() beim Self-Destruct fehlgeschlagen ist) oder erneut
+// hochgeladen wurde. Indikatoren in absteigender Stärke:
+//   1. `.setup-locked` Lockfile (definitiver Marker, vom Setup selbst
+//      geschrieben — sticht immer)
+//   2. existierende `.env` (Heuristik — wenn die schon liegt, ist das
+//      System mindestens teil-installiert)
+//
+// Bypass: ?force_delete=confirm im Fehlerfall, ?dev=1 fuer Re-Setup
+// in der lokalen Entwicklung. ?force_unlock=<token> setzt das Lockfile
+// zurueck — Token muss der Operator aus den Server-Logs lesen.
+$baseDir   = __DIR__;
+$lockFile  = $baseDir . '/.setup-locked';
+$envFile   = $baseDir . '/.env';
+$alreadyInstalled = file_exists($lockFile) || file_exists($envFile);
+
+// Force-Unlock: erlaubt Re-Setup, wenn Operator den Token aus dem
+// Server-Log uebergibt (nur lokale Filesystem-Lese-Berechtigung
+// koennte den Token sehen, also kein Self-Service-Reset im Web).
+if ($alreadyInstalled
+    && isset($_GET['force_unlock'])
+    && file_exists($lockFile)
+    && hash_equals(trim((string) @file_get_contents($lockFile)), (string) $_GET['force_unlock'])
+) {
+    @unlink($lockFile);
+    @unlink($envFile);
+    $alreadyInstalled = false;
+    setupLog('Setup-Lock per force_unlock zurueckgesetzt.');
+}
+
+if ($alreadyInstalled && !isset($_GET['force_delete']) && !$devMode) {
+    http_response_code(423);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Setup gesperrt</title>';
+    echo '<style>body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#0a0a0f;color:#e4e4ed;padding:48px;max-width:720px;margin:0 auto;line-height:1.6}h1{color:#ff6b2c;font-weight:300;margin-bottom:24px}code{background:#1d1d24;padding:2px 8px;border-radius:4px;color:#ff6b2c;font-size:.9em}.box{background:#16161e;border:1px solid #2a2a3a;border-radius:8px;padding:24px;margin:24px 0}</style>';
+    echo '</head><body>';
+    echo '<h1>Setup bereits abgeschlossen</h1>';
+    echo '<p>Dieser Setup-Wizard wurde bereits ausgeführt. Ein erneuter Aufruf ist gesperrt, damit niemand die Datenbank versehentlich oder boeswillig zuruecksetzen kann.</p>';
+    echo '<div class="box"><strong>Pflicht-Schritt:</strong><br>Bitte loesche <code>setup.php</code> jetzt manuell vom Webspace. Das Lockfile <code>.setup-locked</code> sollte ebenfalls geloescht werden, sobald setup.php weg ist.</div>';
+    echo '<p style="opacity:.7;font-size:.9em;">Falls du das System wirklich neu installieren willst: setup.php loeschen, ' . htmlspecialchars(basename($lockFile)) . ' loeschen, .env loeschen — oder Setup-Wizard erneut hochladen und mit <code>?force_unlock=&lt;TOKEN&gt;</code> aufrufen, wobei TOKEN der Inhalt des Lockfiles ist (per FTP/SSH lesbar).</p>';
+    echo '</body></html>';
+    exit;
+}
+
 // ── CSRF-Token für das Setup ────────────────────────────────────────
 // Das Setup steht temporär öffentlich im Web — ohne Token könnte ein
 // fremder Request einen halbfertigen Install auslösen. Token wird per
@@ -1090,6 +1136,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
             $errors[] = '.env Datei konnte nicht geschrieben werden — Schreibrechte prüfen.';
             setupLog('file_put_contents(.env) fehlgeschlagen');
         } else {
+            // .env enthaelt DB- und Discord-Credentials im Klartext —
+            // 0600 verhindert, dass andere Webspace-Mieter (Shared
+            // Hosting) oder ein falsch konfigurierter Webserver die
+            // Datei lesen koennen. @ unterdrueckt Warnungen auf
+            // Windows-Hostern, wo chmod ohnehin keinen Effekt hat.
+            @chmod($baseDir . '/.env', 0600);
             $success[] = '.env Datei erstellt.';
         }
     }
@@ -1124,15 +1176,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 
     writeProgress('cleanup', 'Aufräumen...', 95);
 
-    // ─── Schritt F: Self-destruct ───────────────────────────────────
-    $setupFile = __FILE__;
+    // ─── Schritt F: Lockfile + Self-destruct ────────────────────────
+    // Reihenfolge ist wichtig: Lockfile ZUERST schreiben, dann Self-
+    // Delete versuchen. Falls unlink() fehlschlaegt (z.B. wegen
+    // Permissions auf Shared Hosting), ist das Lockfile schon da —
+    // ein erneuter setup.php-Aufruf wird oben am Re-Run-Schutz
+    // abgewiesen, statt die DB zu resetten.
+    $setupFile    = __FILE__;
     $selfDeleteOk = false;
+    if (empty($errors)) {
+        // Lockfile-Inhalt = Token, mit dem ein Operator (FTP/SSH-Zugriff)
+        // einen kontrollierten Re-Setup ausloesen kann (?force_unlock=).
+        // Im Web ist der Token nicht sichtbar.
+        $lockToken = bin2hex(random_bytes(16));
+        if (@file_put_contents($lockFile, $lockToken) === false) {
+            // Lockfile konnte nicht geschrieben werden — Hard-Fail,
+            // sonst koennte ein Re-Run die DB ueberschreiben.
+            $errors[] = 'Lockfile (.setup-locked) konnte nicht geschrieben werden — Setup wurde NICHT abgeschlossen, weil ohne Lockfile ein Re-Run moeglich waere. Bitte Schreibrechte im Setup-Verzeichnis pruefen und Setup erneut ausfuehren.';
+            setupLog('Lockfile-Write fehlgeschlagen: ' . $lockFile);
+        } else {
+            @chmod($lockFile, 0600);
+        }
+    }
+
     if (empty($errors)) {
         @unlink($setupFile);
         clearstatcache(true, $setupFile);
         $selfDeleteOk = !file_exists($setupFile);
         if (!$selfDeleteOk) {
-            $warnings[] = 'setup.php konnte nicht automatisch gelöscht werden — bitte manuell entfernen, sonst könnte jemand das System re-installieren.';
+            $warnings[] = 'setup.php konnte nicht automatisch gelöscht werden — bitte manuell entfernen. Das Lockfile (.setup-locked) blockiert weitere Aufrufe, aber die Datei selbst sollte trotzdem weg.';
             setupLog('Self-delete fehlgeschlagen: ' . $setupFile);
         }
         // Setup-Log aus der Session löschen (enthält ggf. Pfade)
