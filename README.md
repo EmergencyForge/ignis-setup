@@ -1,8 +1,11 @@
 # intraRP Setup
 
-Setup-Wizard für [intraRP](https://github.com/EmergencyForge/intraRP) — ein Intranet-Rollenspielsystem mit Discord-Integration für FiveM-Feuerwehr- und Rettungsdienst-Communities.
+> [!IMPORTANT]
+> **Dieses Repository ist archiviert.** Der Setup-Wizard wird nicht mehr separat heruntergeladen — er liegt jedem ignis-Release als Install-Package bei: einfach `ignis-<version>-install.zip` von der [Release-Seite](https://github.com/EmergencyForge/ignis/releases/latest) laden, entpacken und der `readme.txt` folgen. Der Release-Build bezieht `setup.php` weiterhin aus diesem Repo.
 
-Das Script lädt das aktuelle Release-ZIP herunter, führt die Datenbank-Migrations aus, erstellt die `.env` und löscht sich anschließend selbst.
+Setup-Wizard für [ignis](https://github.com/EmergencyForge/ignis) (früher intraRP) — ein Intranet-Rollenspielsystem mit Discord-Integration für FiveM-Feuerwehr- und Rettungsdienst-Communities.
+
+Das Script entpackt das mitgelieferte Release-Archiv (bzw. lädt es herunter, wenn keines beiliegt), führt die Datenbank-Migrations aus, erstellt die `.env` und löscht sich anschließend selbst.
 
 ## Voraussetzungen
 

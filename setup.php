@@ -1046,6 +1046,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                     if (!str_ends_with($name, '.zip')) {
                         continue;
                     }
+                    // Das Install-Package (setup.php + Archiv + readme) ist
+                    // kein App-Archiv — überspringen, sonst ZIP im ZIP.
+                    if (str_ends_with($name, '-install.zip')) {
+                        continue;
+                    }
                     if (str_starts_with($name, 'ignis-')) {
                         $zipAsset = $asset;
                         break;
