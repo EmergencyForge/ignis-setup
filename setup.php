@@ -294,6 +294,26 @@ foreach ($phpLimits as $key => $limit) {
 $curlAvailable = function_exists('curl_init');
 $allowUrlFopen = (bool) ini_get('allow_url_fopen');
 
+/**
+ * Mitgeliefertes Release-Archiv neben setup.php suchen (Install-Package).
+ * Liegt ein ignis-*.zip / intraRP-*.zip im selben Verzeichnis, wird es
+ * direkt entpackt — kein GitHub-Download nötig. Bei mehreren Treffern
+ * gewinnt alphabetisch das letzte (= höchste Version).
+ */
+function findBundledArchive(): ?string
+{
+    foreach (['ignis-*.zip', 'intraRP-*.zip'] as $pattern) {
+        $matches = glob(__DIR__ . DIRECTORY_SEPARATOR . $pattern);
+        if (!empty($matches)) {
+            sort($matches, SORT_NATURAL);
+            return end($matches);
+        }
+    }
+    return null;
+}
+
+$bundledArchive = findBundledArchive();
+
 // Writable-Check auf das Verzeichnis in dem setup.php liegt — dort wird
 // die .env geschrieben und das ZIP extrahiert. Wenn das nicht writable
 // ist, kann das Setup sofort scheitern, ohne vorher 100MB runterzuladen.
@@ -654,8 +674,10 @@ if (isset($_GET['force_delete']) && $_GET['force_delete'] === 'confirm') {
 $errors = [];
 $success = [];
 $downloadMethodOk = $curlAvailable || $allowUrlFopen;
+// Mit mitgeliefertem Archiv ist kein Download nötig — die fehlende
+// Download-Methode blockiert das Setup dann nicht.
 $canProceed = $phpVersionOk
-    && $downloadMethodOk
+    && ($downloadMethodOk || $bundledArchive !== null)
     && class_exists('ZipArchive')
     && $allExtensionsOk
     && $setupDirWritable;
@@ -962,13 +984,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
         $errors[] = 'Zu viele Setup-Versuche in kurzer Zeit. Bitte kurz warten.';
     }
 
-    $gitBranch    = $_POST['git_branch'] ?? 'release';
+    $gitBranch    = $_POST['git_branch'] ?? ($bundledArchive !== null ? 'local' : 'release');
     $customBranch = trim($_POST['custom_branch'] ?? '');
 
     // Whitelist
-    if (!in_array($gitBranch, ['release', 'main', 'custom'], true)) {
+    if (!in_array($gitBranch, ['local', 'release', 'main', 'custom'], true)) {
         $errors[] = 'Ungültiger Branch-Modus.';
-        $gitBranch = 'release';
+        $gitBranch = $bundledArchive !== null ? 'local' : 'release';
+    }
+    if ($gitBranch === 'local' && $bundledArchive === null) {
+        $errors[] = 'Kein mitgeliefertes Archiv (ignis-*.zip) neben setup.php gefunden.';
     }
     if ($gitBranch === 'custom' && !isValidBranchName($customBranch)) {
         $errors[] = 'Custom Branch-Name enthält ungültige Zeichen.';
@@ -983,11 +1008,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
     $migrateOutput  = '';
     $needsManualComposer = false;
 
-    writeProgress('connect', 'Verbindung zu GitHub...', 0);
+    writeProgress('connect', $gitBranch === 'local' ? 'Mitgeliefertes Paket wird vorbereitet...' : 'Verbindung zu GitHub...', 0);
 
     // ─── Schritt A: Quellcode installieren ──────────────────────────
     if (empty($errors)) {
-        if ($gitBranch === 'release') {
+        if ($gitBranch === 'local') {
+            // Install-Package: das neben setup.php liegende Archiv wird
+            // entpackt statt etwas herunterzuladen. Nach erfolgreichem
+            // Entpacken wird das Archiv gelöscht.
+            $zipPath = $bundledArchive;
+            writeProgress('zip', 'Paket wird entpackt...', 25);
+            $zip = new ZipArchive();
+            $rc = $zip->open($zipPath);
+            if ($rc === true) {
+                $zip->extractTo($baseDir);
+                $zip->close();
+                @unlink($zipPath);
+                if (file_exists($zipPath)) {
+                    $warnings[] = 'Das Installations-Archiv ' . htmlspecialchars(basename($zipPath)) . ' konnte nicht gelöscht werden — bitte manuell entfernen.';
+                }
+                $success[] = 'Mitgeliefertes Paket ' . htmlspecialchars(basename($zipPath)) . ' erfolgreich installiert.';
+            } else {
+                $errors[] = 'ZIP-Entpacken fehlgeschlagen (Code: ' . $rc . ').';
+            }
+        } elseif ($gitBranch === 'release') {
             $rel = fetchLatestRelease('EmergencyForge', 'intraRP');
             if (!$rel['ok']) {
                 $errors[] = 'Konnte Release-Informationen nicht abrufen: ' . ($rel['error'] ?? '');
@@ -1200,6 +1244,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
     }
 
     if (empty($errors)) {
+        // Beilagen des Install-Packages mit aufräumen, falls vorhanden.
+        $bundledReadme = __DIR__ . DIRECTORY_SEPARATOR . 'readme.txt';
+        if (file_exists($bundledReadme)) {
+            @unlink($bundledReadme);
+        }
+
         @unlink($setupFile);
         clearstatcache(true, $setupFile);
         $selfDeleteOk = !file_exists($setupFile);
@@ -3104,13 +3154,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                             </div>
                         </div>
 
-                        <?php $dlMethodOk = $curlAvailable || $allowUrlFopen; ?>
+                        <?php $dlMethodOk = $curlAvailable || $allowUrlFopen || $bundledArchive !== null; ?>
                         <div class="requirement-box <?php echo $dlMethodOk ? 'success' : 'error'; ?>">
                             <span class="requirement-icon" aria-hidden="true"><?php echo $dlMethodOk ? '✓' : '✗'; ?></span>
                             <div class="requirement-detail">
                                 <strong class="requirement-title">Download</strong>
                                 <div class="requirement-status">
-                                    <?php if ($curlAvailable): ?>
+                                    <?php if ($bundledArchive !== null && !$curlAvailable && !$allowUrlFopen): ?>
+                                        <strong>Nicht erforderlich</strong>
+                                        <div class="requirement-sub">Mitgeliefertes Paket wird verwendet — kein Download nötig</div>
+                                    <?php elseif ($curlAvailable): ?>
                                         <strong>cURL verfügbar</strong>
                                         <div class="requirement-sub">Optimale Methode für große Downloads</div>
                                     <?php elseif ($allowUrlFopen): ?>
@@ -3203,10 +3256,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                     </div>
                 </section>
 
-                <!-- Step 1: Git Repository -->
-                <section class="wizard-step" data-step="1" aria-label="Git Repository">
-                    <h2 class="section-title">Git Repository</h2>
+                <!-- Step 1: Installationsquelle -->
+                <section class="wizard-step" data-step="1" aria-label="Installationsquelle">
+                    <h2 class="section-title"><?php echo $bundledArchive !== null ? 'Installationsquelle' : 'Git Repository'; ?></h2>
 
+                    <?php if ($bundledArchive !== null): ?>
+                        <div class="form-group">
+                            <label>Installationsquelle</label>
+                            <input type="hidden" name="git_branch" value="local">
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" checked disabled>
+                                    <span>
+                                        <div>
+                                            <strong>Mitgeliefertes Paket</strong>
+                                            <span class="warning-badge warning-badge--success">INSTALL-PACKAGE</span>
+                                        </div>
+                                        <small><?php echo htmlspecialchars(basename($bundledArchive)); ?> liegt neben setup.php und wird direkt entpackt — kein Download nötig. Das Archiv wird nach der Installation automatisch gelöscht.</small>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    <?php else: ?>
                     <div class="form-group">
                         <label>Version auswählen</label>
                         <div class="radio-group">
@@ -3250,6 +3321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                         <?php endif; ?>
                         <small>Repository: <code>github.com/EmergencyForge/intraRP</code></small>
                     </div>
+                    <?php endif; ?>
 
                     <div class="wizard-nav">
                         <button type="button" class="wizard-nav-btn wizard-nav-btn--back" data-wizard-prev>Zurück</button>
