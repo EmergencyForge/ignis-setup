@@ -193,10 +193,10 @@ function freshCsrfToken(): string
 // ── Basis-Systemchecks ───────────────────────────────────────────────
 
 $phpVersion = phpversion();
-// Hinweis: Bump von 8.1 auf 8.2. Runtime nutzt readonly properties,
-// first-class-callable-Syntax und Features aus respect/validation ^2.3
-// die 8.1 nicht sauber unterstützen. CI-Baseline liegt auf 8.4.
-$requiredPhpVersion = '8.2.0';
+// ignis verlangt PHP 8.3 (composer.json: "php": ">=8.3") — Composer bricht
+// auf älteren Versionen mit einem kryptischen Plattform-Fehler ab, deshalb
+// blockiert das Setup hier früh und verständlich. CI-Baseline liegt auf 8.4.
+$requiredPhpVersion = '8.3.0';
 $phpVersionOk = version_compare($phpVersion, $requiredPhpVersion, '>=');
 
 $execAvailable = function_exists('exec') && !in_array('exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true);
@@ -1118,7 +1118,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
     writeProgress('composer', 'Abhängigkeiten installieren...', 50);
 
     // ─── Schritt B: Composer install (nur Branch-Mode) ──────────────
-    if (empty($errors) && $gitBranch !== 'release') {
+    // Release-ZIP und mitgeliefertes Paket enthalten vendor/ bereits —
+    // Composer läuft nur beim Git-Checkout (main/custom).
+    if (empty($errors) && !in_array($gitBranch, ['release', 'local'], true)) {
         $composer = installComposer($baseDir, $execAvailable);
         $composerOutput = $composer['output'];
         if (!$composer['ok']) {
@@ -4026,8 +4028,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
 
             // ─── Summary / confirmation step ───
             function populateSummary() {
-                var branch = form.querySelector('input[name="git_branch"]:checked');
-                var branchLabels = { release: 'Letzter Release (ZIP)', main: 'Main Branch', custom: 'Custom Branch' };
+                var branch = form.querySelector('input[name="git_branch"]:checked')
+                    || form.querySelector('input[name="git_branch"][type="hidden"]');
+                var branchLabels = { local: 'Mitgeliefertes Paket', release: 'Letzter Release (ZIP)', main: 'Main Branch', custom: 'Custom Branch' };
                 var branchText = branchLabels[branch ? branch.value : 'release'] || 'Release';
                 if (branch && branch.value === 'custom') {
                     var custom = document.getElementById('custom_branch_field');
@@ -4171,15 +4174,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canProceed && !isset($_POST['actio
                 e.preventDefault();
                 if (!validateStep(currentStep)) return;
 
-                var branch = form.querySelector('input[name="git_branch"]:checked');
-                var isRelease = branch && branch.value === 'release';
+                var branch = form.querySelector('input[name="git_branch"]:checked')
+                    || form.querySelector('input[name="git_branch"][type="hidden"]');
+                var mode = branch ? branch.value : 'release';
+                var isBundled = mode === 'release' || mode === 'local';
 
-                if (!isRelease) {
+                if (!isBundled) {
                     document.getElementById('modal-step-download').textContent = 'Repository wird geklont...';
                     document.getElementById('modal-step-install').textContent = 'Branch wird ausgecheckt...';
                 }
-                if (isRelease) {
-                    document.getElementById('modal-step-composer').textContent = 'Im Release enthalten';
+                if (isBundled) {
+                    document.getElementById('modal-step-composer').textContent = 'Im Paket enthalten';
+                }
+                if (mode === 'local') {
+                    document.getElementById('modal-step-download').textContent = 'Mitgeliefertes Paket wird entpackt...';
                 }
 
                 modal.classList.add('visible');
